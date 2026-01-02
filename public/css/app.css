@@ -1,0 +1,19 @@
+/* Error: (0: 0, 1: 0.25rem, 2: 0.5rem, 3: 1rem, 4: 1.5rem, 5: 3rem) isn't a valid CSS value.
+ *     ,
+ * 445 | $negative-spacers: if($enable-negative-margins, negativify-map($spacers), null);
+ *     |                                                                ^^^^^^^^ value
+ *     |                                                 ======================== unknown function treated as plain CSS
+ *     '
+ *   resources/scss/_variables.scss 445:64  @use
+ *   resources/scss/app.scss 13:1           root stylesheet */
+
+body::before {
+  font-family: "Source Code Pro", "SF Mono", Monaco, Inconsolata, "Fira Mono",
+      "Droid Sans Mono", monospace, monospace;
+  white-space: pre;
+  display: block;
+  padding: 1em;
+  margin-bottom: 1em;
+  border-bottom: 2px solid black;
+  content: "Error: (0: 0, 1: 0.25rem, 2: 0.5rem, 3: 1rem, 4: 1.5rem, 5: 3rem) isn't a valid CSS value.\a     \2577 \a 445 \2502  $negative-spacers: if($enable-negative-margins, negativify-map($spacers), null);\a     \2502                                                                 ^^^^^^^^ value\a     \2502                                                  \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501 \2501  unknown function treated as plain CSS\a     \2575 \a   resources/scss/_variables.scss 445:64  @use\a   resources/scss/app.scss 13:1           root stylesheet";
+}
