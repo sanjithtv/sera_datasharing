@@ -119,8 +119,7 @@
                             <p class="mb-0 text-muted">&copy;
                                 <script>
                                     document.write(new Date().getFullYear())
-                                </script> SERA. Crafted with <i class="mdi mdi-heart text-danger"></i> by
-                                Kaizen
+                                </script> SERA. Developed by Kaizen
                             </p>
                         </div>
                     </div>

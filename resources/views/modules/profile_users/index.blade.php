@@ -22,12 +22,13 @@ App::setLocale(session('lang'));
     <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18">@lang('translation.profile_users')</h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="Search for @lang('translation.licensee')...">
+                                <input type="text" class="form-control search" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -50,12 +51,12 @@ App::setLocale(session('lang'));
                             <table class="table align-middle table-nowrap mb-0" id="customerTable">
                                 <thead class="table-light">
                                     <tr>
-                                        <th class="sort" data-sort="name" scope="col">@lang('translation.id')</th>
-                                        <th class="sort" data-sort="owner" scope="col">@lang('translation.name')</th>
-                                        <th class="sort" data-sort="owner" scope="col">@lang('translation.email')</th>
-                                        <th class="sort" data-sort="owner" scope="col">@lang('translation.designation')</th>
-                                        <th class="sort" data-sort="owner" scope="col">@lang('translation.role')</th>
-                                        <th class="sort" data-sort="star_value" scope="col">Status</th>
+                                        <th class="sort" data-sort="id" scope="col">@lang('translation.id')</th>
+                                        <th class="sort" data-sort="name" scope="col">@lang('translation.name')</th>
+                                        <th class="sort" data-sort="email" scope="col">@lang('translation.email')</th>
+                                        <th class="sort" data-sort="designation" scope="col">@lang('translation.designation')</th>
+                                        <th class="sort" data-sort="role" scope="col">@lang('translation.role')</th>
+                                        <th class="sort" data-sort="status" scope="col">Status</th>
                                         <th scope="col">Action</th>
                                     </tr>
                                 </thead>
@@ -66,15 +67,11 @@ App::setLocale(session('lang'));
                                                 class="fw-medium link-primary">{{$profileUser->id}}</a></td>
                                         <td>
                                             <div class="d-flex align-items-center">
-                                                <div class="flex-shrink-0">
-                                                    <img src="{{ URL::asset('build/images/brands/dribbble.png') }}"
-                                                        alt="" class="avatar-xxs rounded-circle image_src object-fit-cover">
-                                                </div>
                                                 <div class="flex-grow-1 ms-2 name">{{$profileUser->id}}
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="owner">{{$profileUser->fullname_en}}</td>
+                                        <td class="name">{{$profileUser->fullname_en}}</td>
                                         <td class="email">{{$profileUser->email}}</td>
                                         <td class="designation">{{$profileUser->designation}}</td>
                                         <td>
@@ -83,7 +80,7 @@ App::setLocale(session('lang'));
                                         @endphp
                                         {{ $roleNames ?: '—' }}
                                         </td>
-                                        <td><span class="star_value">{{$profileUser->status}}</span> </td>
+                                        <td><span class="status">{{$profileUser->status}}</span> </td>
                                         
                                         <td>
                                             <ul class="list-inline hstack gap-2 mb-0">
@@ -176,7 +173,7 @@ App::setLocale(session('lang'));
 @section('script')
 <script src="{{ URL::asset('build/libs/list.js/list.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/list.pagination.js/list.pagination.min.js') }}"></script>
-<script src="{{ URL::asset('build/js/pages/crm-companies.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/sec-users.init.js') }}"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
 @endsection

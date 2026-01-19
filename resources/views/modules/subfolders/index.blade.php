@@ -3,7 +3,7 @@ App::setLocale(session('lang'));
 @endphp
 @extends('layouts.master')
 @section('title')
-    @lang('translation.licensees')
+    @lang('translation.sub_folders')
 @endsection
 @section('css')
     <link href="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.css') }}" rel="stylesheet" type="text/css" />
@@ -16,18 +16,19 @@ App::setLocale(session('lang'));
             ADMINISTRATION
         @endslot
         @slot('title')
-            @lang('translation.licensees')
+            @lang('translation.sub_folders')
         @endslot
     @endcomponent
     <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18">@lang('translation.sub_folders')</h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="Search for @lang('translation.licensee')...">
+                                <input type="text" class="form-control search" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -50,8 +51,9 @@ App::setLocale(session('lang'));
                             <table class="table align-middle table-nowrap mb-0" id="customerTable">
                                 <thead class="table-light">
                                     <tr>
-                                        <th class="sort" data-sort="owner" scope="col">@lang('translation.name')</th>
-                                        <th class="sort" data-sort="star_value" scope="col">@lang('translation.status')</th>
+                                        <th class="sort" data-sort="name" scope="col">@lang('translation.name') (@lang('translation.en'))</th>
+                                        <th class="sort" data-sort="name_ar" scope="col">@lang('translation.name') (@lang('translation.ar'))</th>
+                                        <th class="sort" data-sort="status" scope="col">@lang('translation.status')</th>
                                         <th scope="col">@lang('translation.action')</th>
                                     </tr>
                                 </thead>
@@ -59,18 +61,19 @@ App::setLocale(session('lang'));
                                     @foreach($subfolders as $key => $subfolder)
                                     <tr>
                                        
-                                        <td class="owner">{{$subfolder->name_en}}</td>
-                                        <td><span class="star_value">{{$subfolder->status}}</span> </td>
+                                        <td class="name">{{$subfolder->name_en}}</td>
+                                        <td class="name">{{$subfolder->name_ar}}</td>
+                                        <td><span class="status">{{$subfolder->status}}</span> </td>
                                         <td>
                                             <ul class="list-inline hstack gap-2 mb-0">
                                                 <li class="list-inline-item" data-bs-toggle="tooltip"
                                                     data-bs-trigger="hover" data-bs-placement="top" title="Edit">
-                                                    <a class="edit-item-btn" href="#showModal" data-bs-toggle="modal"><i
+                                                    <a class="edit-item-btn btn btn-sm btn-info" href="#showModal" data-bs-toggle="modal"><i
                                                             class="ri-pencil-fill align-bottom text-muted"></i></a>
                                                 </li>
                                                 <li class="list-inline-item" data-bs-toggle="tooltip"
                                                     data-bs-trigger="hover" data-bs-placement="top" title="Delete">
-                                                    <a class="remove-item-btn" data-bs-toggle="modal"
+                                                    <a class="remove-item-btn btn btn-sm btn-info" data-bs-toggle="modal"
                                                         href="#deleteRecordModal">
                                                         <i class="ri-delete-bin-fill align-bottom text-muted"></i>
                                                     </a>

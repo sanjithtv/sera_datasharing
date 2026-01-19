@@ -285,6 +285,7 @@ return [
     "template" => "Template",
     "entries" => "Entries",
     "sheetname" => "Sheet Name",
+    "search"=>"Search",
 
 
 ];

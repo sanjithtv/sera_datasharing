@@ -25,12 +25,13 @@ App::setLocale(session('lang'));
     <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18">@lang('translation.forms')</h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="Search for @lang('translation.licensee')...">
+                                <input type="text" class="form-control search" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -55,12 +56,12 @@ App::setLocale(session('lang'));
                                     <tr>
                                         <th class="sort" data-sort="name" scope="col">ID</th>
                                         
-                                        <th>@lang('translation.licensee')</th>
-                                        <th>@lang('translation.subfolder')</th>
+                                        <th class="sort" data-sort="licensee" scope="col">@lang('translation.licensee')</th>
+                                        <th class="sort" data-sort="subfolder" scope="col">@lang('translation.subfolder')</th>
                                         <th>@lang('translation.version')</th>
-                                        <th>@lang('translation.department')</th>
+                                        <th class="sort" data-sort="departmentname" scope="col">@lang('translation.department')</th>
                                         <th>@lang('translation.keys')</th>
-                                        <th>@lang('translation.status')</th>
+                                        <th class="sort" data-sort="status" scope="col">@lang('translation.status')</th>
                                         <th>@lang('translation.action')</th>
                                     </tr>
                                 </thead>
@@ -71,30 +72,26 @@ App::setLocale(session('lang'));
                                                 class="fw-medium link-primary">{{$template->code}}</a></td>
                                         <td>
                                             <div class="d-flex align-items-center">
-                                                <div class="flex-shrink-0">
-                                                    <img src="{{ URL::asset('build/images/brands/dribbble.png') }}"
-                                                        alt="" class="avatar-xxs rounded-circle image_src object-fit-cover">
-                                                </div>
                                                 <div class="flex-grow-1 ms-2 name">{{$template->id}}
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="owner">{{ $lang === 'ar' ? ($template->licensee->name_ar ?? '—') : ($template->licensee->name_en ?? '—') }}</td>
-                                        <td>{{ $lang === 'ar' ? ($template->subfolder->name_ar ?? '—') : ($template->subfolder->name_en ?? '—') }} </td>
+                                        <td class="licensee">{{ $lang === 'ar' ? ($template->licensee->name_ar ?? '—') : ($template->licensee->name_en ?? '—') }}</td>
+                                        <td class="subfolder">{{ $lang === 'ar' ? ($template->subfolder->name_ar ?? '—') : ($template->subfolder->name_en ?? '—') }} </td>
                                         <td>{{ $template->version }}</td>
-                                        <td>{{ $lang === 'ar' ? ($template->department->name_ar ?? '—') : ($template->department->name_en ?? '—') }}</td>
+                                        <td class="departmentname">{{ $lang === 'ar' ? ($template->department->name_ar ?? '—') : ($template->department->name_en ?? '—') }}</td>
                                         <td>{{ $template->keys_count }}</td>
-                                        <td>
+                                        <td class="status">
                                             <span class="badge {{ $template->status === 'active' ? 'bg-success' : 'bg-secondary' }}">
                                                 {{ ucfirst($template->status) }}
                                             </span>
                                         </td>
                                         <td>
-                        <a href="{{ route('forms.licensee_templates.edit', $template->id) }}" class="edit-item-btn"><i
+                        <a href="{{ route('forms.licensee_templates.edit', $template->id) }}" class="edit-item-btn btn btn-sm btn-info"><i
                                                             class="ri-pencil-fill align-bottom text-muted"></i></a>
                         <form action="{{ route('forms.licensee_templates.destroy', $template->id) }}" method="POST" style="display:inline">
                             @csrf @method('DELETE')
-                            <a class="remove-item-btn" onclick="return confirm('Delete this template?')"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
+                            <a class="remove-item-btn btn btn-sm btn-info" onclick="return confirm('Delete this template?')"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
                         </form>
                     </td>
 
@@ -176,7 +173,7 @@ App::setLocale(session('lang'));
 <script src="{{ URL::asset('build/libs/list.js/list.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/list.pagination.js/list.pagination.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
-<script src="{{ URL::asset('build/js/pages/crm-companies.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/crm-licensees.init.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
 @endsection
 

@@ -34,6 +34,7 @@ var options = {
     valueNames: [
         "id",
         "name",
+        "name_ar",
         "owner",
         "industry_type",
         "star_value",

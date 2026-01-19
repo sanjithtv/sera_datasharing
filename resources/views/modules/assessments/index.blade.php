@@ -2,9 +2,6 @@
 App::setLocale(session('lang'));
 @endphp
 @extends('layouts.master')
-@section('title')
-    @lang('translation.assessments')
-@endsection
 @section('css')
     <link href="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.css') }}" rel="stylesheet" type="text/css" />
 @endsection
@@ -22,12 +19,13 @@ App::setLocale(session('lang'));
 <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18">@lang('translation.assessments')</h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="Search for @lang('translation.licensee')...">
+                                <input type="text" class="form-control search" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -55,13 +53,13 @@ App::setLocale(session('lang'));
                             <table class="table align-middle table-nowrap mb-0" id="customerTable">
                                 <thead class="table-light">
                                     <tr>
-                                        <th class="sort" data-sort="name" scope="col">ID</th>
+                                        <th class="sort" data-sort="id" scope="col">ID</th>
                                         
-                                        <th>@lang('translation.licensee')</th>
-                                        <th>@lang('translation.subfolder')</th>
-                                        <th>@lang('translation.version')</th>
+                                        <th class="sort" data-sort="licensee" scope="col">@lang('translation.licensee')</th>
+                                        <th class="sort" data-sort="subfolder" scope="col">@lang('translation.subfolder')</th>
+                                        <th class="sort" data-sort="version" scope="col">@lang('translation.version')</th>
                                         <th>@lang('translation.date')</th>
-                                        <th>@lang('translation.status')</th>
+                                        <th class="sort" data-sort="status" scope="col">@lang('translation.status')</th>
                                         <th>@lang('translation.entries')</th>
                                         <th>@lang('translation.action')</th>
                                     </tr>
@@ -69,12 +67,12 @@ App::setLocale(session('lang'));
                                 <tbody class="list form-check-all">
                                     @forelse ($assessments as $index => $assessment)
                                     <tr>
-                                        <td>{{ $assessment->id }}</td>
-                                        <td>{{ $assessment->licensee->name_en ?? '—' }}</td>
-                                        <td>{{ $assessment->licenseeTemplate->subfolder->name_en ?? '—' }}</td>
-                                        <td>{{ $assessment->licenseeTemplate->version }}</td>
+                                        <td class="id">{{ $assessment->id }}</td>
+                                        <td class="licensee">{{ $assessment->licensee->name_en ?? '—' }}</td>
+                                        <td class="subfolder">{{ $assessment->licenseeTemplate->subfolder->name_en ?? '—' }}</td>
+                                        <td class="version">{{ $assessment->licenseeTemplate->version }}</td>
                                         <td>{{ $assessment->assessment_date }}</td>
-                                        <td>
+                                        <td class="status">
                                             <span class="badge {{ $assessment->status === 'active' ? 'bg-success' : 'bg-secondary' }}">
                                                 {{ ucfirst($assessment->status) }}
                                             </span>
@@ -86,12 +84,12 @@ App::setLocale(session('lang'));
                                             <a href="{{ route('assessments.show', $assessment->id) }}" class="btn btn-sm btn-info">
                                             <i class="ri-eye-fill"></i>
                                             </a>
-                                            <a href="#" class="edit-assessment-btn" data-id="{{ $assessment->id }}" data-status="{{ $assessment->status }}"><i
+                                            <a href="#" class="edit-assessment-btn btn btn-sm btn-info" data-id="{{ $assessment->id }}" data-status="{{ $assessment->status }}"><i
                                                                                 class="ri-pencil-fill align-bottom text-muted"></i></a>
                                                                 
                                             <form action="{{ route('assessments.destroy', $assessment->id) }}" method="POST" style="display:inline" >
                                                 @csrf @method('DELETE')
-                                                <a href="#" class="remove-item-btn" onclick="if(confirm('Delete this assessment?')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
+                                                <a href="#" class="remove-item-btn btn btn-sm btn-info" onclick="if(confirm('Delete this assessment?')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
                                             </form>
                                         </td>
                                     </tr>
@@ -168,7 +166,7 @@ App::setLocale(session('lang'));
 @section('script')
 <script src="{{ URL::asset('build/libs/list.js/list.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/list.pagination.js/list.pagination.min.js') }}"></script>
-<script src="{{ URL::asset('build/js/pages/crm-companies.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/crm-assessments.init.js') }}"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
 <script>

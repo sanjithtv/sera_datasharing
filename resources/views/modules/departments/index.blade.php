@@ -23,12 +23,13 @@ App::setLocale(session('lang'));
     <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18">@lang('translation.departments')</h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="Search for @lang('translation.licensee')...">
+                                <input type="text" class="form-control search" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -51,9 +52,10 @@ App::setLocale(session('lang'));
                             <table class="table align-middle table-nowrap mb-0" id="customerTable">
                                 <thead class="table-light">
                                     <tr>
-                                        <th class="sort" data-sort="name" scope="col">@lang('translation.code')</th>
-                                        <th class="sort" data-sort="owner" scope="col">@lang('translation.licensee')</th>
-                                        <th class="sort" data-sort="star_value" scope="col">@lang('translation.status')</th>
+                                        <th class="sort" data-sort="code" scope="col">@lang('translation.code')</th>
+                                        <th class="sort" data-sort="name" scope="col">@lang('translation.name') (@lang('translation.en'))</th>
+                                        <th class="sort" data-sort="name" scope="col">@lang('translation.name') (@lang('translation.ar'))</th>
+                                        <th class="sort" data-sort="status" scope="col">@lang('translation.status')</th>
                                         <th scope="col">Action</th>
                                     </tr>
                                 </thead>
@@ -62,33 +64,30 @@ App::setLocale(session('lang'));
                                     <tr>
                                         <td class="id" style="display:none;"><a href="javascript:void(0);"
                                                 class="fw-medium link-primary">{{$department->code}}</a></td>
-                                        <td>
+                                        <td class="code">
                                             <div class="d-flex align-items-center">
-                                                <div class="flex-shrink-0">
-                                                    <img src="{{ URL::asset('build/images/brands/dribbble.png') }}"
-                                                        alt="" class="avatar-xxs rounded-circle image_src object-fit-cover">
-                                                </div>
                                                 <div class="flex-grow-1 ms-2 name">{{$department->code}}
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="owner">{{$department->name_en}}</td>
-                                        <td><span class="star_value">{{$department->status}}</span> </td>
+                                        <td class="name">{{$department->name_en}}</td>
+                                        <td class="name_ar">{{$department->name_ar}}</td>
+                                        <td><span class="status">{{$department->status}}</span> </td>
                                         <td>
                                             <ul class="list-inline hstack gap-2 mb-0">
                                                 <li class="list-inline-item" data-bs-toggle="tooltip"
                                                     data-bs-trigger="hover" data-bs-placement="top" title="Edit">
-                                                    <a href="{{ route('departments.edit', $department->id) }}" class="edit-item-btn"><i
+                                                    <a href="{{ route('departments.edit', $department->id) }}" class="edit-item-btn btn btn-sm btn-info"><i
                                                             class="ri-pencil-fill align-bottom text-muted"></i></a>
                                                     
                                                 </li>
-                                                <li class="list-inline-item" data-bs-toggle="tooltip"
+                                                <li class="" data-bs-toggle="tooltip"
                                                     data-bs-trigger="hover" data-bs-placement="top" title="Delete">
                                                     <form action="{{ route('departments.archive', $department->id) }}" method="POST" class="d-inline"
                         onsubmit="return confirm('Are you sure you want to archive this department?')">
                         @csrf
                         @method('PATCH')
-                        <button class="remove-item-btn"  type="submit" class="btn btn-sm btn-danger">
+                        <button class="btn btn-sm btn-info" type="submit" class="btn btn-sm btn-danger">
                             <i class="ri-delete-bin-fill align-bottom text-muted"></i>
                         </button>
                     </form>
@@ -167,7 +166,7 @@ App::setLocale(session('lang'));
 @section('script')
 <script src="{{ URL::asset('build/libs/list.js/list.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/list.pagination.js/list.pagination.min.js') }}"></script>
-<script src="{{ URL::asset('build/js/pages/crm-companies.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/crm-licensees.init.js') }}"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
 @endsection

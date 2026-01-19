@@ -264,5 +264,6 @@ return [
     "data_entry_mode" => "وضع إدخال البيانات",
     "template" => "نموذج",
     "entries" => "إدخالات",
+    "search"=>"يبحث",
 ];
 ?>

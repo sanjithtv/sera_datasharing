@@ -22,6 +22,7 @@ App::setLocale(session('lang'));
     <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18">@lang('translation.licensees')</h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
@@ -51,33 +52,32 @@ App::setLocale(session('lang'));
                                 <thead class="table-light">
                                     <tr>
                                         <th class="sort" data-sort="name" scope="col">@lang('translation.code')</th>
-                                        <th class="sort" data-sort="owner" scope="col">@lang('translation.licensee')</th>
-                                        <th class="sort" data-sort="star_value" scope="col">@lang('translation.status')</th>
+                                        <th class="sort" data-sort="licensee" scope="col">@lang('translation.licensee') (@lang('translation.en'))</th>\
+                                        <th class="sort" data-sort="licensee_ar" scope="col">@lang('translation.licensee') (@lang('translation.ar'))</th>
+                                        <th class="sort" data-sort="status" scope="col">@lang('translation.status')</th>
                                         <th scope="col">@lang('translation.action')</th>
                                     </tr>
                                 </thead>
                                 <tbody class="list form-check-all">
                                     @foreach($licensees as $key => $licensee)
                                     <tr>
-                                        <td class="id" style="display:none;"><a href="javascript:void(0);"
+                                        <td  style="display:none;"><a href="javascript:void(0);"
                                                 class="fw-medium link-primary">{{$licensee->code}}</a></td>
-                                        <td>
+                                        <td class="name">
                                             <div class="d-flex align-items-center">
-                                                <div class="flex-shrink-0">
-                                                    <img src="{{ URL::asset('build/images/brands/dribbble.png') }}"
-                                                        alt="" class="avatar-xxs rounded-circle image_src object-fit-cover">
-                                                </div>
+                                                
                                                 <div class="flex-grow-1 ms-2 name">{{$licensee->code}}
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="owner">{{$licensee->name_en}}</td>
-                                        <td><span class="star_value">{{$licensee->status}}</span> </td>
+                                        <td class="licensee">{{$licensee->name_en}}</td>
+                                        <td class="licensee_ar">{{$licensee->name_ar}}</td>
+                                        <td><span class="status">{{$licensee->status}}</span> </td>
                                         <td>
                                             <ul class="list-inline hstack gap-2 mb-0">
                                                 <li class="list-inline-item" data-bs-toggle="tooltip"
                                                     data-bs-trigger="hover" data-bs-placement="top" title="Edit">
-                                                    <a class="edit-item-btn" href="{{ route('licensees.edit', $licensee->id) }}" ><i
+                                                    <a class="edit-item-btn btn btn-sm btn-info" href="{{ route('licensees.edit', $licensee->id) }}" ><i
                                                             class="ri-pencil-fill align-bottom text-muted"></i></a>
                                                 </li>
                                                 <li class="list-inline-item" data-bs-toggle="tooltip"
@@ -86,7 +86,7 @@ App::setLocale(session('lang'));
                                       onsubmit="return confirm('Are you sure you want to archive this licensee?')">
                                     @csrf
                                     @method('PUT')
-                                    <button class="btn btn-sm btn-danger"><i class="ri-delete-bin-fill align-bottom text-muted"></i></button>
+                                    <button class="btn btn-sm btn-info"><i class="ri-delete-bin-fill align-bottom text-muted"></i></button>
                                 </form>
                                                     
                                                 </li>
@@ -163,7 +163,7 @@ App::setLocale(session('lang'));
 @section('script')
 <script src="{{ URL::asset('build/libs/list.js/list.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/list.pagination.js/list.pagination.min.js') }}"></script>
-<script src="{{ URL::asset('build/js/pages/crm-companies.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/crm-licensees.init.js') }}"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
 @endsection

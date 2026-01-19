@@ -22,6 +22,7 @@ App::setLocale(session('lang'));
 <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18">@lang('translation.assessments')</h4>
             <div class="card" id="companyList">
                 <div class="card-header align-items-center d-flex">
                                     <h4 class="card-title mb-0 flex-grow-1"></h4>
