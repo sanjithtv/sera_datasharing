@@ -20,6 +20,8 @@ class SiteConfigurationController extends Controller
             'app_title'       => SiteConfiguration::getValue('app_title', 'My Application'),
             'app_description' => SiteConfiguration::getValue('app_description', ''),
             'app_logo'        => SiteConfiguration::getValue('app_logo', null),
+            'default_language'        => SiteConfiguration::getValue('default_language', null),
+            'theme_color'        => SiteConfiguration::getValue('theme_color', null),
 
             // Email
             'mail_from_name'  => SiteConfiguration::getValue('mail_from_name', ''),
@@ -49,6 +51,8 @@ class SiteConfigurationController extends Controller
             'app_title'       => 'nullable|string|max:255',
             'app_description' => 'nullable|string|max:500',
             'app_logo'        => 'nullable|image|mimes:jpg,jpeg,png,svg|max:2048',
+            'default_language' => 'nullable|string|max:255',
+            'theme_color' => 'nullable|string|max:255',
 
             // email
             'mail_from_name'  => 'nullable|string|max:255',

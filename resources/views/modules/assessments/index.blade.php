@@ -86,11 +86,12 @@ App::setLocale(session('lang'));
                                             </a>
                                             <a href="#" class="edit-assessment-btn btn btn-sm btn-info" data-id="{{ $assessment->id }}" data-status="{{ $assessment->status }}"><i
                                                                                 class="ri-pencil-fill align-bottom text-muted"></i></a>
-                                                                
+                                            @if(!in_array($assessment->status, ['completed','archived']))    
                                             <form action="{{ route('assessments.destroy', $assessment->id) }}" method="POST" style="display:inline" >
                                                 @csrf @method('DELETE')
                                                 <a href="#" class="remove-item-btn btn btn-sm btn-info" onclick="if(confirm('Delete this assessment?')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
                                             </form>
+                                            @endif
                                         </td>
                                     </tr>
                                     @endforeach

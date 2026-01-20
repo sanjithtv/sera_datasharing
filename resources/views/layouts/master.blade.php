@@ -1,5 +1,9 @@
 @php
-App::setLocale(session('lang'));
+if(session('lang')!=""){
+    App::setLocale(session('lang'));    
+}else{
+    App::setLocale(app()->getLocale());    
+}
 @endphp
 <!doctype html >
 @if(session('lang')=="ar")
@@ -15,9 +19,16 @@ App::setLocale(session('lang'));
     <meta content="Themesbrand" name="author" />
     <!-- App favicon -->
     <link rel="shortcut icon" href="{{ URL::asset('build/images/favicon.ico')}}">
+    
+
     @include('layouts.head-css')
 </head>
-
+<style>
+:root[data-topbar=dark]  {
+    --vz-header-bg: {{ $siteConfig->theme_color ?? '#405189' }};
+    --vz-topbar-user-bg: {{ $siteConfig->theme_color ?? '#405189' }};
+}
+</style>
 @section('body')
     @include('layouts.body')
 @show

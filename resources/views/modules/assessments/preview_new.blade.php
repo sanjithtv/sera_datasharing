@@ -10,11 +10,13 @@
 @endcomponent
 
 <div class="card shadow-sm">
+
+    {{-- HEADER --}}
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Excel Import Preview</h5>
 
         @if ($canProceed)
-            <span class="badge bg-success">All Good</span>
+            <span class="badge bg-success">Ready to Import</span>
         @else
             <span class="badge bg-danger">Validation Errors Found</span>
         @endif
@@ -22,30 +24,30 @@
 
     <div class="card-body">
 
-        <!-- Assessment Details -->
+        {{-- ASSESSMENT INFO --}}
         <div class="alert alert-light border mb-4">
-            <strong>Assessment:</strong> {{ $assessment->id }} <br>
-            <strong>Licensee:</strong> {{ $assessment->licensee->name_en }} <br>
-            <strong>Template:</strong> v{{ $assessment->template->version }}
+            <div><strong>Assessment ID:</strong> {{ $assessment->id }}</div>
+            <div><strong>Licensee:</strong> {{ $assessment->licensee->name_en }}</div>
+            <div><strong>Template Version:</strong> v{{ $assessment->template->version }}</div>
         </div>
 
-        <!-- SHEET TABS -->
-        <ul class="nav nav-tabs mb-3" id="sheetTabs" role="tablist">
-
+        {{-- SHEET TABS --}}
+        <ul class="nav nav-tabs mb-3" role="tablist">
             @php $tabIndex = 0; @endphp
 
-            @foreach($errorsPerSheet as $sheetName => $rows)
+            @foreach ($errorsPerSheet as $sheetId => $sheetErrors)
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link {{ $tabIndex === 0 ? 'active' : '' }}"
-                            id="tab-{{ $tabIndex }}-tab"
-                            data-bs-toggle="tab"
-                            data-bs-target="#tab-{{ $tabIndex }}"
-                            type="button"
-                            role="tab">
-                        {{ $sheetName }}
+                    <button
+                        class="nav-link {{ $tabIndex === 0 ? 'active' : '' }}"
+                        data-bs-toggle="tab"
+                        data-bs-target="#sheet-tab-{{ $tabIndex }}"
+                        type="button"
+                        role="tab">
+
+                        {{ $sheetId }}
 
                         @php
-                            $errCount = collect($rows)->filter(fn($x) => !empty($x))->count();
+                            $errCount = collect($sheetErrors)->filter(fn($x) => !empty($x))->count();
                         @endphp
 
                         @if ($errCount > 0)
@@ -55,26 +57,74 @@
                 </li>
                 @php $tabIndex++; @endphp
             @endforeach
-
         </ul>
 
-        <!-- TAB CONTENT -->
+        {{-- TAB CONTENT --}}
         <div class="tab-content">
+            @php $tabIndex = 0; @endphp
 
             @php $tabIndex = 0; @endphp
-            @foreach($errorsPerSheet as $sheetName => $sheetErrors)
+            @foreach ($errorsPerSheet as $sheetName => $sheetErrors)
 
                 @php
-                    // Filter preview rows per sheet
+                    //$sheetName = $namePerSheet[$sheetId] ?? 'Sheet';
+
+                    $headerError = collect($sheetErrors)
+                        ->where('type', 'header_validation')
+                        ->first();
+                       
                     $sheetRows = $previewRows->where('sheet_id', $namePerSheet[$sheetName]);
                 @endphp
 
-                <div class="tab-pane fade {{ $tabIndex === 0 ? 'show active' : '' }}" id="tab-{{ $tabIndex }}" role="tabpanel">
+                <div class="tab-pane fade {{ $tabIndex === 0 ? 'show active' : '' }}"
+                     id="sheet-tab-{{ $tabIndex }}"
+                     role="tabpanel">
 
                     <h6 class="fw-bold mb-3">{{ $sheetName }}</h6>
 
-                    @if ($sheetRows->isEmpty())
+                    {{-- HEADER VALIDATION ERRORS --}}
+                    @if ($headerError)
+                        <div class="alert alert-danger border">
+                            <h6 class="fw-bold mb-2">
+                                <i class="ri-error-warning-line"></i>
+                                Column Validation Error
+                            </h6>
+
+                            <p class="mb-2">
+                                The uploaded Excel columns do not match the configured template for this sheet.
+                            </p>
+
+                            @if (!empty($headerError['errors']['missing_columns']))
+                                <div class="mb-2">
+                                    <strong>Missing Columns:</strong>
+                                    <ul class="mb-0">
+                                        @foreach ($headerError['errors']['missing_columns'] as $col)
+                                            <li>{{ $col }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endif
+
+                            @if (!empty($headerError['errors']['extra_columns']))
+                                <div>
+                                    <strong>Extra Columns Found:</strong>
+                                    <ul class="mb-0">
+                                        @foreach ($headerError['errors']['extra_columns'] as $col)
+                                            <li>{{ $col }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endif
+                        </div>
+
+                        <p class="text-muted">
+                            Preview is disabled for this sheet. Please fix the Excel headers and re-upload.
+                        </p>
+
+                    {{-- ROW PREVIEW --}}
+                    @elseif ($sheetRows->isEmpty())
                         <p class="text-muted">No preview data available for this sheet.</p>
+
                     @else
 
                         <div class="table-responsive">
@@ -133,20 +183,17 @@
                 </div>
 
                 @php $tabIndex++; @endphp
-
             @endforeach
-
         </div>
 
-        <!-- ACTION BUTTONS -->
+        {{-- ACTION BUTTONS --}}
         <div class="mt-4 d-flex justify-content-between">
-
             <a href="{{ route('assessments.index') }}" class="btn btn-secondary">
                 Cancel
             </a>
 
             @if ($canProceed)
-                <form action="{{ route('assessments.importData',$assessment->id) }}" method="POST">
+                 <form action="{{ route('assessments.importData',$assessment->id) }}" method="POST">
                     @csrf
                     <input type="hidden" name="assessment_id" value="{{ $assessment->id }}">
                     <button type="submit" class="btn btn-primary">
@@ -158,7 +205,6 @@
                     Fix Errors in Excel & Re-upload
                 </button>
             @endif
-
         </div>
 
     </div>

@@ -31,6 +31,29 @@ App::setLocale(session('lang'));
                         <label>Description</label>
                         <textarea name="app_description" class="form-control">{{ $settings['app_description'] }}</textarea>
                     </div>
+                    <!-- Default Language -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Default Language</label>
+                            <select name="default_language" class="form-select">
+                                <option value="en" {{ ($settings["default_language"] ?? 'en') == 'en' ? 'selected' : '' }}>
+                                    English
+                                </option>
+                                <option value="ar" {{ ($settings["default_language"] ?? '') == 'ar' ? 'selected' : '' }}>
+                                    Arabic
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- Theme Color -->
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Theme Color</label>
+                            <input type="color"
+                                   name="theme_color"
+                                   class="form-control form-control-color"
+                                   value="{{ $settings["theme_color"] ?? '#405189' }}">
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label>Logo</label><br>
                         @if($settings['app_logo'])
@@ -38,6 +61,7 @@ App::setLocale(session('lang'));
                         @endif
                         <input type="file" name="app_logo" class="form-control">
                     </div>
+                    
                 </div>
 
                 <!-- EMAIL -->

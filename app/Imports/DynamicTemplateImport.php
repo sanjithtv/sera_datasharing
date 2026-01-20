@@ -12,6 +12,8 @@ use Maatwebsite\Excel\Concerns\ToCollection;
 use PhpOffice\PhpSpreadsheet\Cell\Cell;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
+use Illuminate\Support\Str;
+
 
 class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormulas
 {
@@ -92,6 +94,27 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                         'trim',
                         collect($rows[0] ?? [])->toArray()
                     );
+
+                    $headerErrors = $this->parent->validateHeaders(
+        $this->headers,
+        $this->keys
+    );
+
+                    if (!empty($headerErrors)) {
+
+        // ❌ Block entire import
+        $this->parent->canProceed = false;
+
+        $this->parent->errorsPerSheet[$this->sheetName][] = [
+            'type'    => 'header_validation',
+            'message' => 'Excel columns do not match template definition.',
+            'errors'  => $headerErrors
+        ];
+        $this->parent->namePerSheet[$this->sheetName] = $this->sheetId;
+
+        // ❌ DO NOT PROCESS ROWS
+        return;
+    }
                     foreach ($rows as $rowIndex => $row) {
 
 
@@ -245,4 +268,39 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
         return $imports;
     }
+
+    /**
+     * ✅ Validate Excel headers against LicenseeTemplateKey
+     */
+    public function validateHeaders(array $excelHeaders, $keys): array
+    {
+        // Normalize headers
+        $excelHeaders = collect($excelHeaders)
+            ->map(fn ($h) => Str::slug(trim($h), '_'))
+            ->filter()
+            ->values()
+            ->toArray();
+
+        // Expected keys from DB
+        $expectedKeys = $keys
+            ->pluck('short_code')
+            ->map(fn ($k) => Str::slug($k, '_'))
+            ->toArray();
+
+        $missing = array_values(array_diff($expectedKeys, $excelHeaders));
+        $extra   = array_values(array_diff($excelHeaders, $expectedKeys));
+
+        $errors = [];
+
+        if (!empty($missing)) {
+            $errors['missing_columns'] = $missing;
+        }
+
+        if (!empty($extra)) {
+            $errors['extra_columns'] = $extra;
+        }
+
+        return $errors;
+    }
+
 }

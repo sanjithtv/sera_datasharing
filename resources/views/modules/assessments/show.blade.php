@@ -26,7 +26,18 @@ App::setLocale(session('lang'));
             <h4 class="mb-sm-1 font-size-18">@lang('translation.assessments')</h4>
             <div class="card" id="companyList">
                 <div class="card-body">
-                    <a href="{{ route('assessments.index') }}" class="btn btn-secondary btn-sm">← Back to List</a><br><br>
+                    <div class="row mb-2">
+                        <div class="col-md-6"><a href="{{ route('assessments.index') }}" class="btn btn-secondary btn-sm">← Back to List</a></div>
+                        <div class="col-md-6 text-end">
+                            @if(!in_array($assessment->status, ['completed','archived']))   
+                            <form action="{{ route('assessments.destroy', $assessment->id) }}" method="POST" style="display:inline" >
+                                @csrf @method('DELETE')
+                                <a href="#" class="remove-item-btn btn btn-sm btn-warning" onclick="if(confirm('Delete this assessment?')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i> @lang('translation.delete')</a>
+                            </form>
+                            @endif
+                        </div>
+                    </div>        
+                     <br>
                     <!-- Section 1: Assessment Basic Details -->
     <div class="card mb-4 shadow-sm">
         <div class="card-header bg-light fw-bold">Basic Information</div>

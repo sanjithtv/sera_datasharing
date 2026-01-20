@@ -24,12 +24,24 @@ class SiteConfigurationServiceProvider extends ServiceProvider
     public function boot(): void
     {
         try {
-            $config = SiteConfiguration::first();
+                // Fetch configs as key => value array
+            $configs = SiteConfiguration::query()
+                ->pluck('value', 'key')
+                ->toArray();
 
-            View::share('siteConfig', $config);
+            // Convert to object for blade friendliness
+            $siteConfig = (object) $configs;
 
-            if ($config?->app_title) {
-                config(['app.name' => $config->app_title]);
+            // Share with all views
+            View::share('siteConfig', $siteConfig);
+
+            // Apply default language
+            if (!empty($siteConfig->default_language)) {
+                app()->setLocale($siteConfig->default_language);
+                // Persist to session if not already set
+                if (!session()->has('lang')) {
+                    session(['lang' => $siteConfig->default_language]);
+                }
             }
         } catch (\Exception $e) {
             // Prevent crash during migrations

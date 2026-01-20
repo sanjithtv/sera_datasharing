@@ -248,7 +248,6 @@ public function upload(Request $request)
 public function importData(Request $request, Assessment $assessment)
 {
     DB::beginTransaction();
-
     try {
         // Fetch rows from slave_master_data for this assessment
         $assessment = Assessment::find($request->assessment_id);
