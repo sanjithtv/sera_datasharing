@@ -13,10 +13,10 @@ App::setLocale(session('lang'));
 @section('content')
     @component('components.breadcrumb')
         @slot('li_1')
-            SECURITY
+            @lang('translation.roles')
         @endslot
         @slot('title')
-            @lang('translation.profile_users')
+            @lang('translation.permissions')
         @endslot
     @endcomponent
     <div class="row">

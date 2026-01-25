@@ -286,6 +286,10 @@ return [
     "entries" => "Entries",
     "sheetname" => "Sheet Name",
     "search"=>"Search",
+    "create" => "Create",
+    "profile_overview" => "Profile Overview",
+    "change_password" => "Change Password",
+
 
 
 ];

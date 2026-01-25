@@ -8,6 +8,7 @@ use App\Models\ProfileUser;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\Storage;
 
 use App\Helpers\PasswordPolicy;
 
@@ -116,11 +117,14 @@ class ProfileUserController extends Controller
             'status'      => ['required', Rule::in(['active', 'inactive'])],
             'password'    => 'nullable|min:6|confirmed',
             'role_id'     => 'required|exists:roles,id',
+            
         ]);
 
         if (!PasswordPolicy::validate($validated['password'])) {
                 return back()->withErrors(['password' => 'Password does not meet current security policy.']);
         }
+
+        
 
         $profileUser->update([
             'fullname_en' => $validated['fullname_en'],
@@ -128,8 +132,11 @@ class ProfileUserController extends Controller
             'email'       => $validated['email'],
             'phone'       => $validated['phone'] ?? null,
             'designation' => $validated['designation'] ?? null,
-            'status'      => $validated['status'],
+            'status'      => $validated['status']
+            
         ]);
+
+        
 
         $user = $profileUser->user;
 
@@ -195,9 +202,26 @@ public function profileUpdate(Request $request)
         'fullname_ar' => 'nullable|string|max:255',
         'phone'       => 'nullable|string|max:20',
         'designation' => 'nullable|string|max:100',
+        'profile_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
     ]);
+    
+    if ($request->hasFile('profile_image')) {
+
+            // Delete old image
+            if ($user->profile_image && Storage::disk('public')->exists('profile_images/' . $user->profile_image)) {
+                Storage::disk('public')->delete('profile_images/' . $user->profile_image);
+            }
+
+            $file = $request->file('profile_image');
+            $filename = uniqid('profile_') . '.' . $file->getClientOriginalExtension();
+            $file->storeAs('profile_images', $filename, 'public');
+
+            $validated['profile_image'] = $filename;
+        }
 
     $profileUser->update($validated);
+
+
     $user->update(['name' => $validated['fullname_en']]);
 
     return back()->with('success', 'Profile updated successfully.');

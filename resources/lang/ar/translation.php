@@ -265,5 +265,6 @@ return [
     "template" => "نموذج",
     "entries" => "إدخالات",
     "search"=>"يبحث",
+    "create" => "يخلق"
 ];
 ?>

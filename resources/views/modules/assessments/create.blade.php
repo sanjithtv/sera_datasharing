@@ -13,10 +13,10 @@ App::setLocale(session('lang'));
 @section('content')
     @component('components.breadcrumb')
         @slot('li_1')
-            SURVEYS
+            @lang('translation.assessments')
         @endslot
         @slot('title')
-            @lang('translation.assessments')
+            @lang('translation.create')
         @endslot
 @endcomponent
 <div class="row">

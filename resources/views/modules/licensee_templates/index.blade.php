@@ -16,10 +16,10 @@ App::setLocale(session('lang'));
 @section('content')
     @component('components.breadcrumb')
         @slot('li_1')
-            ADMINISTRATION
+            @lang('translation.forms')
         @endslot
         @slot('title')
-            @lang('translation.forms')
+            @lang('translation.list')
         @endslot
     @endcomponent
     <div class="row">

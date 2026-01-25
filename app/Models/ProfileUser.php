@@ -18,6 +18,7 @@ class ProfileUser extends Model
         'phone',
         'designation',
         'status',
+        'profile_image'
     ];
 
     public function user()

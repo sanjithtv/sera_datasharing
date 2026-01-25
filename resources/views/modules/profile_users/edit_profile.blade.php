@@ -16,12 +16,12 @@ App::setLocale(session('lang'));
         <ul class="nav nav-tabs mb-3" id="profileTabs">
             <li class="nav-item">
                 <a class="nav-link active" data-bs-toggle="tab" href="#tab_profile">
-                    <i class="ri-user-3-line me-1"></i> Profile Overview
+                    <i class="ri-user-3-line me-1"></i> @lang('translation.profile_overview')
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link" data-bs-toggle="tab" href="#tab_password">
-                    <i class="ri-lock-password-line me-1"></i> Change Password
+                    <i class="ri-lock-password-line me-1"></i> @lang('translation.change_password')
                 </a>
             </li>
         </ul>
@@ -30,7 +30,7 @@ App::setLocale(session('lang'));
 
             <!-- ✅ TAB 1: PROFILE OVERVIEW -->
             <div class="tab-pane fade show active" id="tab_profile">
-                <form action="{{ route('profileuser.update') }}" method="POST">
+                <form action="{{ route('profileuser.update') }}" method="POST" enctype="multipart/form-data">
                     @csrf
 
                     <div class="row">
@@ -57,6 +57,22 @@ App::setLocale(session('lang'));
                             <input type="text" name="designation" value="{{ $profileUser->designation }}"
                                    class="form-control">
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Profile Image</label>
+                            <input type="file" name="profile_image" class="form-control" accept="image/*">
+                            <small class="text-muted">Allowed formats: jpg, png, jpeg (Max 2MB)</small>
+                        </div>
+                        <div class="mb-2">
+            <img
+                src="{{ $profileUser->profile_image
+                        ? asset('../storage/app/public/profile_images/' . $profileUser->profile_image)
+                        : asset('build/images/users/avatar-1.jpg') }}"
+                class="rounded-circle"
+                width="90"
+                height="90"
+                alt="Profile Image"
+            >
+        </div>
                     </div>
 
                     <button type="submit" class="btn btn-primary">
