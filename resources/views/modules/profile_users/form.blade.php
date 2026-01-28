@@ -18,7 +18,7 @@ App::setLocale(session('lang'));
     <div class="col-md-6">
         <label class="form-label">@lang('translation.email')</label>
         <input type="email" name="email" class="form-control" 
-               value="{{ old('email', $profileUser->email ?? '') }}" required readonly>
+               value="{{ old('email', $profileUser->email ?? '') }}" required>
         @error('email') <div class="text-danger small">{{ $message }}</div> @enderror
     </div>
 

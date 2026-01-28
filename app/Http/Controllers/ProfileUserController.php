@@ -106,12 +106,10 @@ class ProfileUserController extends Controller
         $validated = $request->validate([
             'fullname_en' => 'required|string|max:255',
             'fullname_ar' => 'nullable|string|max:255',
-            'email' => [
-    'nullable',
-    'email',
-    Rule::unique('sr_profile_users', 'email')->ignore($profileUser->id)->whereNotNull('email'),
-    Rule::unique('users', 'email')->ignore(optional($profileUser->user)->id)->whereNotNull('email'),
-],
+            'email' => ['nullable','email',
+                Rule::unique('sr_profile_users', 'email')->ignore($profileUser->id)->whereNotNull('email'),
+                Rule::unique('users', 'email')->ignore(optional($profileUser->user)->id)->whereNotNull('email'),
+            ],
             'phone'       => 'nullable|string|max:20',
             'designation' => 'nullable|string|max:100',
             'status'      => ['required', Rule::in(['active', 'inactive'])],
@@ -120,11 +118,10 @@ class ProfileUserController extends Controller
             
         ]);
 
-        if (!PasswordPolicy::validate($validated['password'])) {
+        if ($validated['password']!='' && !PasswordPolicy::validate($validated['password'])) {
                 return back()->withErrors(['password' => 'Password does not meet current security policy.']);
         }
 
-        
 
         $profileUser->update([
             'fullname_en' => $validated['fullname_en'],
@@ -136,11 +133,8 @@ class ProfileUserController extends Controller
             
         ]);
 
-        
-
         $user = $profileUser->user;
 
-        
         if ($user) {
             $user->update([
                 'name'  => $validated['fullname_en'],
@@ -176,80 +170,80 @@ class ProfileUserController extends Controller
 
     ///PROFILE INFO
     public function profile()
-{
-    $user = auth()->user();
-    $profileUser = $user->profileUser;
+    {
+        $user = auth()->user();
+        $profileUser = $user->profileUser;
 
-    return view('modules.profile_users.profile', compact('profileUser', 'user'));
-}
-
-public function profileEdit()
-{
-    $user = auth()->user();
-    $profileUser = $user->profileUser;
-    $roles = $user->roles; // optional to show role badge
-
-    return view('modules.profile_users.edit_profile', compact('user', 'profileUser', 'roles'));
-}
-
-public function profileUpdate(Request $request)
-{
-    $user = auth()->user();
-    $profileUser = $user->profileUser;
-
-    $validated = $request->validate([
-        'fullname_en' => 'required|string|max:255',
-        'fullname_ar' => 'nullable|string|max:255',
-        'phone'       => 'nullable|string|max:20',
-        'designation' => 'nullable|string|max:100',
-        'profile_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
-    ]);
-    
-    if ($request->hasFile('profile_image')) {
-
-            // Delete old image
-            if ($user->profile_image && Storage::disk('public')->exists('profile_images/' . $user->profile_image)) {
-                Storage::disk('public')->delete('profile_images/' . $user->profile_image);
-            }
-
-            $file = $request->file('profile_image');
-            $filename = uniqid('profile_') . '.' . $file->getClientOriginalExtension();
-            $file->storeAs('profile_images', $filename, 'public');
-
-            $validated['profile_image'] = $filename;
-        }
-
-    $profileUser->update($validated);
-
-
-    $user->update(['name' => $validated['fullname_en']]);
-
-    return back()->with('success', 'Profile updated successfully.');
-}
-
-public function changePassword(Request $request)
-{
-    $validated = $request->validate([
-        'current_password' => 'required',
-        'password' => 'required|confirmed|min:6',
-    ]);
-
-    if (!PasswordPolicy::validate($validated['password'])) {
-                return back()->withErrors(['password' => 'Password does not meet current security policy.']);
-        }
-
-    $user = auth()->user();
-
-    if (!\Hash::check($request->current_password, $user->password)) {
-        return back()->with('error', 'Current password is incorrect.');
+        return view('modules.profile_users.profile', compact('profileUser', 'user'));
     }
 
-    $user->update([
-        'password' => \Hash::make($request->password)
-    ]);
+    public function profileEdit()
+    {
+        $user = auth()->user();
+        $profileUser = $user->profileUser;
+        $roles = $user->roles; // optional to show role badge
 
-    return back()->with('success', 'Password changed successfully.');
-}
+        return view('modules.profile_users.edit_profile', compact('user', 'profileUser', 'roles'));
+    }
+
+    public function profileUpdate(Request $request)
+    {
+        $user = auth()->user();
+        $profileUser = $user->profileUser;
+
+        $validated = $request->validate([
+            'fullname_en' => 'required|string|max:255',
+            'fullname_ar' => 'nullable|string|max:255',
+            'phone'       => 'nullable|string|max:20',
+            'designation' => 'nullable|string|max:100',
+            'profile_image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+        ]);
+        
+        if ($request->hasFile('profile_image')) {
+
+                // Delete old image
+                if ($user->profile_image && Storage::disk('public')->exists('profile_images/' . $user->profile_image)) {
+                    Storage::disk('public')->delete('profile_images/' . $user->profile_image);
+                }
+
+                $file = $request->file('profile_image');
+                $filename = uniqid('profile_') . '.' . $file->getClientOriginalExtension();
+                $file->storeAs('profile_images', $filename, 'public');
+
+                $validated['profile_image'] = $filename;
+            }
+
+        $profileUser->update($validated);
+
+
+        $user->update(['name' => $validated['fullname_en']]);
+
+        return back()->with('success', 'Profile updated successfully.');
+    }
+
+    public function changePassword(Request $request)
+    {
+        $validated = $request->validate([
+            'current_password' => 'required',
+            'password' => 'required|confirmed|min:6',
+        ]);
+
+        if (!PasswordPolicy::validate($validated['password'])) {
+                    return back()->withErrors(['password' => 'Password does not meet current security policy.']);
+            }
+
+        $user = auth()->user();
+
+        if (!\Hash::check($request->current_password, $user->password)) {
+            return back()->with('error', 'Current password is incorrect.');
+        }
+
+        $user->update([
+            'password' => \Hash::make($request->password)
+        ]);
+
+        return back()->with('success', 'Password changed successfully.');
+    }
 
     ///PROFILE INFO
 
