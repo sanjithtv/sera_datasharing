@@ -105,7 +105,7 @@ $profileUser = Auth::user()->profileUser;
                             <img class="rounded-circle header-profile-user" src="@if ($profileUser->profile_image != ''){{ asset('../storage/app/public/profile_images/' . $profileUser->profile_image) }}@else{{ URL::asset('build/images/users/avatar-1.jpg') }}@endif" alt="Header Avatar">
                             <span class="text-start ms-xl-2">
                                 <span class="d-none d-xl-inline-block ms-1 fw-semibold user-name-text">{{Auth::user()->name}}</span>
-                                <span class="d-none d-xl-block ms-1 fs-13 user-name-sub-text">{{ Auth::user()->roles->first()->name }}</span>
+                                <span class="d-none d-xl-block ms-1 fs-13 user-name-text">{{ Auth::user()->roles->first()->name }}</span>
                             </span>
                         </span>
                     </button>

@@ -29,7 +29,7 @@ Route::get('/check-lang', function () {
 });
 
 Route::get('index/{locale}', [App\Http\Controllers\HomeController::class, 'lang']);
-Route::get('index', [App\Http\Controllers\HomeController::class, 'index'])->name('index');
+Route::get('index', [App\Http\Controllers\HomeController::class, 'dashboard'])->name('index');
 Route::get('apps-tasks-kanban', [App\Http\Controllers\HomeController::class, 'index'])->name('apps-tasks-kanban');
 Route::get('pages-faqs', [App\Http\Controllers\HomeController::class, 'index'])->name('pages-faqs');
 
@@ -129,7 +129,7 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/password/change', [PasswordChangeController::class, 'showForm'])->name('password.change');
 Route::post('/password/change', [PasswordChangeController::class, 'update'])->name('password.update');
 
-Route::get('/', [App\Http\Controllers\HomeController::class, 'root'])->name('root');
+Route::get('/', [App\Http\Controllers\HomeController::class, 'dashboard'])->name('index');
 
 //Update User Details
 Route::post('/update-profile/{id}', [App\Http\Controllers\HomeController::class, 'updateProfile'])->name('updateProfile');

@@ -29,7 +29,7 @@
                                     <div class="p-lg-5 p-4">
                                         <div class="mb-4">
                                                 <a href="index" class="d-inline-block auth-logo">
-                                                    <img src="{{ URL::asset('build/images/sera_logo.png') }}" alt="" height="auto">
+                                                    <img src="{{ URL::asset('../storage/app/public/'.$siteConfig->app_logo) }}" alt="" height="auto">
                                                 </a>
                                             </div>
                                         <div>

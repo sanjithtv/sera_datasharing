@@ -126,14 +126,14 @@ var lineChart = new Chart(islinechart, {
 }
 
 // bar chart
-var isbarchart = document.getElementById('bar');
-barChartColor =  getChartColorsArray('bar');
+var isbarchart = document.getElementById('bar1');
+barChartColor =  getChartColorsArray('bar1');
 if(barChartColor){
 isbarchart.setAttribute("width", isbarchart.parentElement.offsetWidth);
 var barChart = new Chart(isbarchart, {
     type: 'bar',
     data: {
-        labels: ["January", "February", "March", "April", "May", "June", "July"],
+        labels: ["January1", "February", "March", "April", "May", "June", "July"],
         datasets: [
             {
                 label: "Sales Analytics",
@@ -321,5 +321,151 @@ var lineChart = new Chart(isradarchart, {
             },
         }
     }
+});
+}
+
+
+////TEST
+// licenseeChart chart
+var isbarchart = document.getElementById('licenseeChart');
+barChartColor =  getChartColorsArray('licenseeChart');
+if(barChartColor){
+isbarchart.setAttribute("width", isbarchart.parentElement.offsetWidth);
+var barChart = new Chart(isbarchart, {
+    type: 'bar',
+    data: {
+        labels: window.dashboardData.licenseeLabels,
+        datasets: [
+            {
+                label: "Assessments by Licensee",
+                backgroundColor: barChartColor[0],
+                borderColor: barChartColor[0],
+                borderWidth: 1,
+                hoverBackgroundColor: barChartColor[1],
+                hoverBorderColor: barChartColor[1],
+                data: window.dashboardData.licenseeCounts
+            }
+        ]
+    },
+    options: {
+        x: {
+            ticks: {
+                font: {
+                    family: 'Poppins',
+                },
+            },
+        },
+        y: {
+            ticks: {
+                font: {
+                    family: 'Poppins',
+                },
+            },
+        },
+        plugins: {
+            legend: {
+                labels: {
+                    font: {
+                        family: 'Poppins',
+                    }
+                }
+            },
+        }
+    }
+});
+}
+
+// departmentChart chart
+var ispiechart = document.getElementById('departmentChart');
+pieChartColors =  getChartColorsArray('departmentChart');
+if(pieChartColors){
+
+var pieChart = new Chart(ispiechart, {
+    type: 'pie',
+    data: {
+        labels: window.dashboardData.departmentLabels,
+        datasets: [
+            {
+                data: window.dashboardData.departmentCounts,
+                backgroundColor: pieChartColors,
+                hoverBackgroundColor: pieChartColors,
+                hoverBorderColor: "#fff"
+            }]
+    },
+    options: {
+        plugins: {
+            legend: {
+                labels: {
+                    font: {
+                        family: 'Poppins',
+                    }
+                }
+            },
+        }
+    }
+});
+}
+
+// line chart
+var islinechart = document.getElementById('templateChart');
+lineChartColor =  getChartColorsArray('templateChart');
+if(lineChartColor){
+islinechart.setAttribute("width", islinechart.parentElement.offsetWidth);
+
+var lineChart = new Chart(islinechart, {
+    type: 'line',
+    data: {
+        labels: window.dashboardData.templateLabels,
+        datasets: [
+            {
+                label: "Usage Count",
+                fill: true,
+                lineTension: 0.5,
+                backgroundColor: lineChartColor[0],
+                borderColor: lineChartColor[1],
+                borderCapStyle: 'butt',
+                borderDash: [],
+                borderDashOffset: 0.0,
+                borderJoinStyle: 'miter',
+                pointBorderColor: lineChartColor[1],
+                pointBackgroundColor: "#fff",
+                pointBorderWidth: 1,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: lineChartColor[1],
+                pointHoverBorderColor: "#fff",
+                pointHoverBorderWidth: 2,
+                pointRadius: 1,
+                pointHitRadius: 10,
+                data: window.dashboardData.templateCounts
+            }
+        ]
+    },
+    options: {
+        x: {
+            ticks: {
+                font: {
+                    family: 'Poppins',
+                },
+            },
+        },
+        y: {
+            ticks: {
+                font: {
+                    family: 'Poppins',
+                },
+            },
+        },
+        plugins: {
+            legend: {
+                labels: {
+                    // This more specific font property overrides the global property
+                    font: {
+                        family: 'Poppins',
+                    }
+                }
+            },
+        },
+    },
+    
 });
 }

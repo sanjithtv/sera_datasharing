@@ -23,6 +23,7 @@ class SiteConfigurationController extends Controller
             'default_language'        => SiteConfiguration::getValue('default_language', null),
             'theme_color'        => SiteConfiguration::getValue('theme_color', null),
             'theme_hover_color'        => SiteConfiguration::getValue('theme_hover_color', null),
+            'theme_icon_color'        => SiteConfiguration::getValue('theme_icon_color', null),
 
             // Email
             'mail_from_name'  => SiteConfiguration::getValue('mail_from_name', ''),
@@ -55,6 +56,7 @@ class SiteConfigurationController extends Controller
             'default_language' => 'nullable|string|max:255',
             'theme_color' => 'nullable|string|max:255',
             'theme_hover_color' => 'nullable|string|max:255',
+            'theme_icon_color' => 'nullable|string|max:255',
 
             // email
             'mail_from_name'  => 'nullable|string|max:255',

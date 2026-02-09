@@ -9,6 +9,11 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\App;
 use Session;
 
+use Illuminate\Support\Facades\DB;
+use App\Models\Assessment;
+
+
+
 class HomeController extends Controller
 {
     /**
@@ -37,6 +42,110 @@ class HomeController extends Controller
     public function root()
     {
         return view('index');
+    }
+
+    public function dashboard()
+    {
+
+        $totalAssessments = DB::table('sr_licensee_assessments')
+        ->where('status','!=','archived')
+        ->count();
+
+        $totalForms = DB::table('sr_licensee_templates')
+            ->where('status','active')
+            ->count();
+
+        $totalLicensees = DB::table('sr_licensees')
+            ->where('status','active')
+            ->count();
+
+        $totalDepartments = DB::table('sr_departments')
+            ->where('status','active')
+            ->count();
+
+        $statusData = DB::table('sr_licensee_assessments')
+            ->select('status', DB::raw('COUNT(*) as total'))
+            ->groupBy('status')
+            ->get();
+
+        $statusLabels = $statusData->pluck('status');
+        $statusCounts = $statusData->pluck('total');
+
+        /* ============================================================
+           1️⃣ Assessments by Licensee → BAR CHART
+        ============================================================ */
+
+        $licenseeData = DB::table('sr_licensee_assessments as a')
+            ->join('sr_licensees as l', 'l.id', '=', 'a.licensee_id')
+            ->select(
+                'l.name_en as licensee',
+                DB::raw('COUNT(a.id) as total')
+            )
+            ->groupBy('l.name_en')
+            ->orderBy('total', 'desc')
+            ->get();
+
+        $licenseeLabels = $licenseeData->pluck('licensee');
+        $licenseeCounts = $licenseeData->pluck('total');
+
+        /* ============================================================
+           2️⃣ Department-wise Assessments → PIE CHART
+        ============================================================ */
+
+        $departmentData = DB::table('sr_licensee_assessments as a')
+            ->join('sr_licensee_templates as t', 't.id', '=', 'a.licensee_template_id')
+            ->join('sr_departments as d', 'd.id', '=', 't.department_id')
+            ->select(
+                'd.name_en as department',
+                DB::raw('COUNT(a.id) as total')
+            )
+            ->groupBy('d.name_en')
+            ->orderBy('total', 'desc')
+            ->get();
+
+        $departmentLabels = $departmentData->pluck('department');
+        $departmentCounts = $departmentData->pluck('total');
+
+
+        /* ============================================================
+           3️⃣ Template Usage Analytics → LINE CHART
+        ============================================================ */
+
+        $templateData = DB::table('sr_licensee_assessments as a')
+            ->join('sr_licensee_templates as t', 't.id', '=', 'a.licensee_template_id')
+            ->select(
+                't.sheet_name',
+                DB::raw('COUNT(a.id) as usage_count')
+            )
+            ->groupBy('t.sheet_name')
+            ->orderBy('usage_count', 'desc')
+            ->get();
+
+        $templateLabels = $templateData->pluck('sheet_name');
+        $templateCounts = $templateData->pluck('usage_count');
+
+        $assessments = Assessment::with(['licenseeTemplate.subfolder'])
+        ->orderByDesc('created_at')
+        ->get();
+
+
+        return view('index', compact(
+            'totalAssessments',
+            'totalForms',
+            'totalLicensees',
+            'totalDepartments',
+            'statusLabels',
+            'statusCounts',
+            'licenseeLabels',
+            'licenseeCounts',
+             'departmentLabels',
+            'departmentCounts',
+
+            'templateLabels',
+            'templateCounts',
+
+            'assessments'
+        ));
     }
 
     /*Language Translation*/

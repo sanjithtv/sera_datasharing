@@ -18,6 +18,8 @@ App::setLocale(session('lang'));
                 <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#main">Main</a></li>
                 <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#email">Email</a></li>
                 <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#security">Security</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#theme">Theme</a></li>
+            </ul>
             </ul>
 
             <div class="tab-content">
@@ -44,22 +46,7 @@ App::setLocale(session('lang'));
                                 </option>
                             </select>
                         </div>
-
-                        <!-- Theme Color -->
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Header Color</label>
-                            <input type="color"
-                                   name="theme_color"
-                                   class="form-control form-control-color"
-                                   value="{{ $settings["theme_color"] ?? '#405189' }}">
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Icon Hover Color</label>
-                            <input type="color"
-                                   name="theme_hover_color"
-                                   class="form-control form-control-color"
-                                   value="{{ $settings["theme_hover_color"] ?? '#1b3460' }}">
-                        </div>
+                      
                     </div>
                     <div class="mb-3">
                         <label>Logo</label><br>
@@ -137,6 +124,35 @@ App::setLocale(session('lang'));
                         <div class="col-md-6 mb-3">
                             <label>Session Timeout (minutes)</label>
                             <input type="number" name="session_timeout" class="form-control" value="{{ $settings['session_timeout'] }}">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- THEME -->
+                <div class="tab-pane fade" id="theme">
+                    <div class="row">
+                       
+                        <!-- Theme Color -->
+                        <div class="col-md-2 mb-3">
+                            <label class="form-label">Header Color</label>
+                            <input type="color"
+                                   name="theme_color"
+                                   class="form-control form-control-color"
+                                   value="{{ $settings["theme_color"] ?? '#405189' }}">
+                        </div>
+                        <div class="col-md-2 mb-3">
+                            <label class="form-label">Icon Color</label>
+                            <input type="color"
+                                   name="theme_icon_color"
+                                   class="form-control form-control-color"
+                                   value="{{ $settings["theme_icon_color"] ?? '#b0442c' }}">
+                        </div>
+                        <div class="col-md-2 mb-3">
+                            <label class="form-label">Icon Hover Color</label>
+                            <input type="color"
+                                   name="theme_hover_color"
+                                   class="form-control form-control-color"
+                                   value="{{ $settings["theme_hover_color"] ?? '#1b3460' }}">
                         </div>
                     </div>
                 </div>

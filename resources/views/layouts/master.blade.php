@@ -28,6 +28,7 @@ if(session('lang')!=""){
     --vz-header-bg: {{ $siteConfig->theme_color ?? '#405189' }};
     --vz-topbar-user-bg: {{ $siteConfig->theme_color ?? '#405189' }};
     --vz-header-item-bg: {{ $siteConfig->theme_hover_color ?? '#1b3460' }}; 
+    --vz-header-item-sub-color:{{ $siteConfig->theme_icon_color ?? '#b0442c' }};
 }
 </style>
 @section('body')
