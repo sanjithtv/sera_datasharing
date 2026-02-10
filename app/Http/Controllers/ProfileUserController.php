@@ -11,6 +11,8 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Storage;
 
 use App\Helpers\PasswordPolicy;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\ProfileUserExport;
 
 class ProfileUserController extends Controller
 {
@@ -164,6 +166,13 @@ class ProfileUserController extends Controller
         }
 
         return redirect()->route('profile_users.index')->with('success', 'Profile user deleted successfully.');
+    }
+
+    public function exportProfileUsers()
+    {
+        $fileName = 'ProfileUser_' . now()->format('Ymd_His') . '.xlsx';
+
+        return Excel::download(new ProfileUserExport, $fileName);
     }
 
 

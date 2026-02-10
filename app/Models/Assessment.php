@@ -33,9 +33,9 @@ class Assessment extends Model
     }
 
     public function slaveData()
-{
-    return $this->hasMany(\App\Models\SlaveMasterData::class, 'assessment_id');
-}
+    {
+        return $this->hasMany(\App\Models\SlaveMasterData::class, 'assessment_id');
+    }
 
     public function licenseeTemplate()
 {

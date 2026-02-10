@@ -23,6 +23,10 @@ use Illuminate\Support\Facades\DB;
 use App\Imports\DynamicTemplateImport;
 use Illuminate\Support\Facades\Storage;
 
+use App\Exports\AssessmentMasterMultiSheetExport;
+use App\Exports\AssessmentExport;
+
+
 
 class AssessmentController extends Controller
 {
@@ -720,6 +724,23 @@ public function update(Request $request, Assessment $assessment)
     $assessment->update(['status' => $validated['status']]);
 
     return response()->json(['success' => true, 'message' => 'Assessment updated successfully.']);
+}
+
+public function exportAssessment()
+{
+    $fileName = 'Assessment_' . now()->format('Ymd_His') . '.xlsx';
+
+    return Excel::download(new AssessmentExport, $fileName);
+}
+
+public function exportMasterData($assessmentId)
+{
+     $fileName = 'Assessment_Preview_MasterData_' . $assessmentId . '.xlsx';
+
+    return Excel::download(
+        new AssessmentMasterMultiSheetExport($assessmentId),
+        $fileName
+    );
 }
 
 

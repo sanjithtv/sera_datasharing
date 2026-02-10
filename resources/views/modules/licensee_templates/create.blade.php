@@ -89,6 +89,17 @@ App::setLocale(session('lang'));
                     <label class="form-label">@lang('translation.sheetname') <span class="text-danger">*</span></label>
                     <input type="text" name="sheet_name" value="{{ old('sheet_name') }}" class="form-control" required>
                 </div>
+                <div class="col-md-6">
+                    <label class="form-label">@lang('translation.classification') <span class="text-danger">*</span></label>
+                    <select name="classification_id" class="form-select" required>
+                        <option value="">Select Classification</option>
+                        @foreach($classifications as $id => $name)
+                            <option value="{{ $id }}" {{ old('classification_id') == $id ? 'selected' : '' }}>
+                                {{ $name }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
 
                 <div class="col-md-6">
                     <label class="form-label">@lang('translation.status') <span class="text-danger">*</span></label>

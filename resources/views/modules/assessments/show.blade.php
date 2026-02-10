@@ -99,6 +99,12 @@ App::setLocale(session('lang'));
                     <i class="bi bi-trash me-2"></i>Clear All Data
                     </a>
                 </li>
+                <hr>
+                <li>
+                    <a class="dropdown-item" id="clearDataBtn" href="{{ route('assessments.export.master', $assessment->id) }}">
+                    <i class="bi bi-trash me-2 "></i>Export Data
+                    </a>
+                </li>
 
             </ul>
         </div>

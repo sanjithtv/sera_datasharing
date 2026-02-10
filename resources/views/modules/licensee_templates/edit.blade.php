@@ -63,6 +63,14 @@ App::setLocale(session('lang'));
                 </select>
             </div>
             <div class="col-md-4 mb-3">
+                <label>@lang('translation.classification')</label>
+                <select name="classification_id" class="form-select">
+                    @foreach($classifications as $id => $name)
+                        <option value="{{ $id }}" {{ $licenseeTemplate->classification_id == $id ? 'selected' : '' }}>{{ $name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-2 mb-3">
                 <label>@lang('translation.sheetname')</label>
                 <input type="text" name="sheet_name" value="{{ $licenseeTemplate->sheet_name }}" class="form-control">
             </div>

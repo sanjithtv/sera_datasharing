@@ -55,7 +55,8 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/', 'store')->name('store');                 
         Route::get('/{departmentId}/edit', 'edit')->name('edit');     
         Route::put('/{departmentId}', 'update')->name('update');      
-        Route::patch('/{departmentId}/archive', 'archive')->name('archive'); 
+        Route::patch('/{departmentId}/archive', 'archive')->name('archive');
+        Route::get('/export_excel', 'exportDepartments')->name('export.excel');  
     });
 
     Route::controller(ProfileUserController::class)->prefix('security')->name('security.')->group(function () {
@@ -65,7 +66,8 @@ Route::middleware(['auth'])->group(function () {
         Route::post('users/', 'store')->name('profile_users.store');                 
         Route::get('users/{id}/edit', 'edit')->name('profile_users.edit');     
         Route::put('users/{id}', 'update')->name('profile_users.update');      
-        Route::patch('users/{id}/archive', 'archive')->name('profile_users.archive'); 
+        Route::patch('users/{id}/archive', 'archive')->name('profile_users.archive');
+        Route::get('users/export_excel', 'exportProfileUsers')->name('profile_users.export.excel');  
 
     });
 
@@ -85,7 +87,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('licensee_templates/destroy', 'destroy')->name('licensee_templates.destroy'); 
         Route::post('licensee_templates/{template}/keys',  'storeKey')->name('licensee_templates.keys.store');
         Route::put('licensee_templates/keys/{key}',  'updateKey')->name('licensee_templates.keys.update');
-        Route::delete('licensee_templates/keys/{key}', [LicenseeTemplateController::class, 'deleteKey'])->name('licensee_templates.keys.delete');  
+        Route::delete('licensee_templates/keys/{key}', [LicenseeTemplateController::class, 'deleteKey'])->name('licensee_templates.keys.delete'); 
+        Route::get('licensee_templates/export_excel', 'exportForms')->name('licensee_templates.export.excel'); 
           
     });
 
@@ -95,6 +98,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/create', 'create')->name('create');
         Route::post('/upload', 'upload')->name('upload');
         Route::post('/commit', 'commitMasterData')->name('commit');
+        Route::get('/export_excel', 'exportAssessment')->name('export.excel');
 
         Route::post('/store', 'store')->name('store'); // for manual create (no file)
         Route::get('/{assessment}/upload', 'showUploadForm')->name('upload.form');
@@ -107,8 +111,8 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/{id}', 'destroy')->name('destroy');
         Route::put('/{assessment}', 'update')->name('update');
 
-
         Route::post('/{assessment}/import-data', 'importData')->name('importData');
+        Route::get('/{assessment}/export-master-data', 'exportMasterData')->name('export.master');
 
     });
 

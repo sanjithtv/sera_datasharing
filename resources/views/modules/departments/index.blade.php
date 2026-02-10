@@ -40,7 +40,7 @@ App::setLocale(session('lang'));
                                 <button type="button" id="dropdownMenuLink1" data-bs-toggle="dropdown" aria-expanded="false"
                                     class="btn btn-soft-info"><i class="ri-more-2-fill"></i></button>
                                 <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink1">
-                                    <li><a class="dropdown-item" href="#">Export as Excel</a></li>
+                                    <li><a class="dropdown-item" href="{{ route('departments.export.excel') }}">Export as Excel</a></li>
                                 </ul>  
                             </div>
                         </div>

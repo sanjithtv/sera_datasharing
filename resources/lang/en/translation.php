@@ -289,6 +289,7 @@ return [
     "create" => "Create",
     "profile_overview" => "Profile Overview",
     "change_password" => "Change Password",
+    "classification" => "Classification",
 
 
 

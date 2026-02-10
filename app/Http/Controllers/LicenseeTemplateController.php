@@ -8,8 +8,13 @@ use App\Models\Licensee;
 use App\Models\LicenseeSubfolder;
 use App\Models\LicenseeTemplateSheet;
 use App\Models\Department;
+use App\Models\Classification;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\FormExport;
+
 
 class LicenseeTemplateController extends Controller
 {
@@ -35,7 +40,8 @@ class LicenseeTemplateController extends Controller
         $licensees = Licensee::pluck('name_en', 'id');
         $subfolders = LicenseeSubfolder::pluck('name_en', 'id');
         $departments = Department::pluck('name_en', 'id');
-        return view('modules.licensee_templates.create', compact('licensees', 'subfolders','departments'));
+        $classifications = Classification::pluck('name_en', 'id');
+        return view('modules.licensee_templates.create', compact('licensees', 'subfolders','departments','classifications'));
     }
 
     /**
@@ -48,6 +54,7 @@ class LicenseeTemplateController extends Controller
             'subfolder_id' => 'required|exists:sr_subfolders,id',
             'version' => 'required|string|max:50',
             'department_id' => 'required|exists:sr_departments,id',
+            'classification_id' => 'required|exists:sr_template_classifications,id',
             'sheet_name' => 'required|string|max:50',
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ]);
@@ -74,13 +81,15 @@ class LicenseeTemplateController extends Controller
         $licensees = Licensee::pluck('name_en', 'id');
         $subfolders = LicenseeSubfolder::pluck('name_en', 'id');
         $departments = Department::pluck('name_en', 'id');
+        $classifications = Classification::pluck('name_en', 'id');
+
         $templateKeys = $licenseeTemplate->keys;
         $sheets = $licenseeTemplate->sheets()
         ->where('status', '1') // optional
         ->pluck('sheet_name', 'id');
 
 
-        return view('modules.licensee_templates.edit', compact('licenseeTemplate', 'licensees', 'subfolders', 'templateKeys','departments','sheets'));
+        return view('modules.licensee_templates.edit', compact('licenseeTemplate', 'licensees', 'subfolders', 'templateKeys','departments','sheets','classifications'));
     }
 
     /**
@@ -95,6 +104,7 @@ class LicenseeTemplateController extends Controller
             'subfolder_id' => 'required|exists:sr_subfolders,id',
             'version' => 'required|string|max:50',
             'department_id' => 'required|exists:sr_departments,id',
+            'classification_id' => 'required|exists:sr_template_classifications,id',
             'sheet_name' => 'required|string|max:50',
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ]);
@@ -139,38 +149,45 @@ class LicenseeTemplateController extends Controller
     }
 
     /**
- * Update a Licensee Template Key (AJAX)
- */
-public function updateKey(Request $request, $key)
-{
-    try {
-        $validated = $request->validate([
-            'desc_en' => 'required|string|max:255',
-            'desc_ar' => 'nullable|string|max:255',
-            'mandatory' => 'required|boolean',
-            'type' => ['required', Rule::in(['number','text','select','number_percentage','date','datetime','time'])],
-        ]);
+     * Update a Licensee Template Key (AJAX)
+     */
+    public function updateKey(Request $request, $key)
+    {
+        try {
+            $validated = $request->validate([
+                'desc_en' => 'required|string|max:255',
+                'desc_ar' => 'nullable|string|max:255',
+                'mandatory' => 'required|boolean',
+                'type' => ['required', Rule::in(['number','text','select','number_percentage','date','datetime','time'])],
+            ]);
 
-        $templateKey = LicenseeTemplateKey::findOrFail($key);
-        $templateKey->update($validated);
-        
-        return back()->with('success', 'Key added successfully.');
-    } catch (\Exception $e) {
-        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            $templateKey = LicenseeTemplateKey::findOrFail($key);
+            $templateKey->update($validated);
+            
+            return back()->with('success', 'Key added successfully.');
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
     }
 
-}
+    /**
+     * Delete a Licensee Template Key (AJAX)
+     */
+    public function deleteKey(LicenseeTemplateKey $key)
+    {
+        $key->delete();
 
-/**
- * Delete a Licensee Template Key (AJAX)
- */
-public function deleteKey(LicenseeTemplateKey $key)
-{
-    $key->delete();
+        return response()->json([
+            'success' => true,
+            'message' => 'Key deleted successfully.'
+        ]);
+    }
 
-    return response()->json([
-        'success' => true,
-        'message' => 'Key deleted successfully.'
-    ]);
-}
+    public function exportForms()
+    {
+        $fileName = 'Form_' . now()->format('Ymd_His') . '.xlsx';
+
+        return Excel::download(new FormExport, $fileName);
+    }
 }

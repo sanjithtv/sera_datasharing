@@ -42,7 +42,7 @@ App::setLocale(session('lang'));
                                 <button type="button" id="dropdownMenuLink1" data-bs-toggle="dropdown" aria-expanded="false"
                                     class="btn btn-soft-info"><i class="ri-more-2-fill"></i></button>
                                 <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink1">
-                                    <li><a class="dropdown-item" href="#">Export as Excel</a></li>
+                                    <li><a class="dropdown-item" href="{{ route('forms.licensee_templates.export.excel') }}">Export as Excel</a></li>
                                 </ul>  
                             </div>
                         </div>
@@ -57,6 +57,7 @@ App::setLocale(session('lang'));
                                         <th class="sort" data-sort="name" scope="col">ID</th>
                                         
                                         <th class="sort" data-sort="licensee" scope="col">@lang('translation.licensee')</th>
+                                        <th class="sort" data-sort="classification" scope="col">@lang('translation.classification')</th>
                                         <th class="sort" data-sort="subfolder" scope="col">@lang('translation.subfolder')</th>
                                         <th>@lang('translation.version')</th>
                                         <th class="sort" data-sort="departmentname" scope="col">@lang('translation.department')</th>
@@ -77,6 +78,7 @@ App::setLocale(session('lang'));
                                             </div>
                                         </td>
                                         <td class="licensee">{{ $lang === 'ar' ? ($template->licensee->name_ar ?? '—') : ($template->licensee->name_en ?? '—') }}</td>
+                                        <td class="classification">{{ $lang === 'ar' ? ($template->classification->name_ar ?? '—') : ($template->classification->name_en ?? '—') }}</td>
                                         <td class="subfolder">{{ $lang === 'ar' ? ($template->subfolder->name_ar ?? '—') : ($template->subfolder->name_en ?? '—') }} </td>
                                         <td>{{ $template->version }}</td>
                                         <td class="departmentname">{{ $lang === 'ar' ? ($template->department->name_ar ?? '—') : ($template->department->name_en ?? '—') }}</td>

@@ -7,6 +7,10 @@ use Illuminate\Http\Request;
 use App\Models\Department;
 use Illuminate\Support\Facades\Validator;
 
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\DepartmentExport;
+
+
 class DepartmentController extends Controller
 {
     public function __construct()
@@ -89,5 +93,12 @@ class DepartmentController extends Controller
 
         return redirect()->route('departments.index')
             ->with('success', 'Department archived successfully.');
+    }
+
+    public function exportDepartments()
+    {
+        $fileName = 'Department_' . now()->format('Ymd_His') . '.xlsx';
+
+        return Excel::download(new DepartmentExport, $fileName);
     }
 }

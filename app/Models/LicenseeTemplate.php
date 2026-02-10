@@ -18,6 +18,7 @@ class LicenseeTemplate extends Model
         'department_id',
         'sheet_name',
         'status',
+        'classification_id'
     ];
 
     public function licensee()
@@ -36,9 +37,9 @@ class LicenseeTemplate extends Model
     }
 
     public function sheets()
-{
-    return $this->hasMany(TemplateSheet::class, 'template_id');
-}
+    {
+        return $this->hasMany(TemplateSheet::class, 'template_id');
+    }
 
     public function keys()
     {
@@ -46,7 +47,12 @@ class LicenseeTemplate extends Model
     }
 
     public function assessments()
-{
-    return $this->hasMany(Assessment::class, 'licensee_template_id');
-}
+    {
+        return $this->hasMany(Assessment::class, 'licensee_template_id');
+    }
+
+    public function classification()
+    {
+        return $this->belongsTo(Classification::class, 'classification_id');
+    }
 }
