@@ -65,7 +65,7 @@
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
                                         <span class="avatar-title bg-primary-subtle rounded fs-3">
-                                            <i class="bx bx-dollar-circle text-primary"></i>
+                                            <i class="bx bx-task text-primary"></i>
                                         </span>
                                     </div>
                                 </div>
@@ -90,7 +90,7 @@
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
                                         <span class="avatar-title bg-info-subtle rounded fs-3">
-                                            <i class="bx bx-shopping-bag text-info"></i>
+                                            <i class="bx bx-folder text-info"></i>
                                         </span>
                                     </div>
                                 </div>
@@ -117,7 +117,7 @@
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
                                         <span class="avatar-title bg-primary-subtle rounded fs-3">
-                                            <i class="bx bx-user-circle text-primary"></i>
+                                            <i class="bx bxs-factory text-primary"></i>
                                         </span>
                                     </div>
                                 </div>
@@ -144,7 +144,7 @@
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
                                         <span class="avatar-title bg-info-subtle rounded fs-3">
-                                            <i class="bx bx-wallet text-info"></i>
+                                            <i class="bx bx-sitemap text-info"></i>
                                         </span>
                                     </div>
                                 </div>

@@ -28,17 +28,17 @@ class AssessmentMasterMultiSheetExport implements WithMultipleSheets
         $sheetIds = AssessmentMasterData::where('assessment_id', $this->assessmentId)
             ->pluck('template_sheet_id')
             ->unique();
-
-        foreach ($sheetIds as $sheetId) {
-            $templateSheets = LicenseeTemplateSheet::with('keys')->where('id',$sheetId)->get();
-            foreach ($templateSheets as $sheet) {
-                $sheets[] = new AssessmentMasterSingleSheetExport(
-                    $this->assessmentId,
-                    $sheet
-                );
-            }
+        if($sheetIds){
+            foreach ($sheetIds as $sheetId) {
+                $templateSheets = LicenseeTemplateSheet::with('keys')->where('id',$sheetId)->get();
+                foreach ($templateSheets as $sheet) {
+                    $sheets[] = new AssessmentMasterSingleSheetExport(
+                        $this->assessmentId,
+                        $sheet
+                    );
+                }
+            }    
         }
-
         return $sheets;
     }
 }

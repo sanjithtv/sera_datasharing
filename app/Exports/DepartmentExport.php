@@ -38,8 +38,8 @@ class DepartmentExport implements FromCollection,WithHeadings, WithMapping
     {
         return [
             __('translation.code'),
-            __('translation.name').' '._('translation.en'),
-            __('translation.name').' '._('translation.ar'),
+            __('translation.name').' '.__('translation.en'),
+            __('translation.name').' '.__('translation.ar'),
             __('translation.status')
         ];
     }

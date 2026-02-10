@@ -115,11 +115,16 @@ class AssessmentController extends Controller
                 return $mapped;
             });
     });
+    $sheetIds = AssessmentMasterData::where('assessment_id', $assessment->id)
+            ->pluck('template_sheet_id')
+            ->unique()
+            ->count();
     //print_r($masterData);exit;
     return view('modules.assessments.show', compact(
         'assessment',
         'sheets',
-        'masterData'
+        'masterData',
+        'sheetIds'
     ));
 }
 
@@ -737,10 +742,18 @@ public function exportMasterData($assessmentId)
 {
      $fileName = 'Assessment_Preview_MasterData_' . $assessmentId . '.xlsx';
 
-    return Excel::download(
-        new AssessmentMasterMultiSheetExport($assessmentId),
-        $fileName
-    );
+    $sheetIds = AssessmentMasterData::where('assessment_id', $assessmentId)
+            ->pluck('template_sheet_id')
+            ->unique()
+            ->count();
+    if($sheetIds>0){
+        return Excel::download(
+            new AssessmentMasterMultiSheetExport($assessmentId),
+            $fileName
+        );    
+    }
+    return false;
+    
 }
 
 
