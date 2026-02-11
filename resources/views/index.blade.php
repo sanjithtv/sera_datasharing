@@ -1,3 +1,6 @@
+@php
+App::setLocale(session('lang'));
+@endphp
 @extends('layouts.master')
 @section('title')
     @lang('translation.dashboards')
