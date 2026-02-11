@@ -16,8 +16,7 @@
                         <div class="d-flex align-items-lg-center flex-lg-row flex-column">
                             <div class="flex-grow-1">
                                 <h4 class="fs-16 mb-1">Hello, {{Auth::user()->name}}!</h4>
-                                <p class="text-muted mb-0">Here's what's happening with your data
-                                    today.</p>
+                                <p class="text-muted mb-0">@lang('translation.welcome_text')</p>
                             </div>
                             <div class="mt-3 mt-lg-0">
                                 <form action="javascript:void(0);">
@@ -60,7 +59,7 @@
                                     <div>
                                         <h4 class="fs-22 fw-semibold ff-secondary mb-4">{{ $totalAssessments }}
                                         </h4>
-                                        <a href="{{ route('assessments.index') }}" class="text-decoration-underline">View assessments
+                                        <a href="{{ route('assessments.index') }}" class="text-decoration-underline">@lang('translation.view_assessments')
                                             </a>
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
@@ -86,7 +85,7 @@
                                 <div class="d-flex align-items-end justify-content-between mt-4">
                                     <div>
                                         <h4 class="fs-22 fw-semibold ff-secondary mb-4">{{ $totalForms }}</h4>
-                                        <a href="{{ route('forms.licensee_templates') }}" class="text-decoration-underline">View all forms</a>
+                                        <a href="{{ route('forms.licensee_templates') }}" class="text-decoration-underline">@lang('translation.view_forms')</a>
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
                                         <span class="avatar-title bg-info-subtle rounded fs-3">
@@ -113,7 +112,7 @@
                                     <div>
                                         <h4 class="fs-22 fw-semibold ff-secondary mb-4">{{ $totalLicensees }}
                                         </h4>
-                                        <a href="{{ route('licensees.index') }}" class="text-decoration-underline">See details</a>
+                                        <a href="{{ route('licensees.index') }}" class="text-decoration-underline">@lang('translation.see_details')</a>
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
                                         <span class="avatar-title bg-primary-subtle rounded fs-3">
@@ -140,7 +139,7 @@
                                     <div>
                                         <h4 class="fs-22 fw-semibold ff-secondary mb-4">{{ $totalDepartments }}
                                         </h4>
-                                        <a href="{{ route('departments.index') }}" class="text-decoration-underline">View all</a>
+                                        <a href="{{ route('departments.index') }}" class="text-decoration-underline">@lang('translation.view_all')</a>
                                     </div>
                                     <div class="avatar-sm flex-shrink-0">
                                         <span class="avatar-title bg-info-subtle rounded fs-3">
@@ -157,7 +156,7 @@
                     <div class="col-xl-6">
                         <div class="card">
                             <div class="card-header border-0 align-items-center d-flex">
-                                <h4 class="card-title mb-0 flex-grow-1">Assessments by Licensee</h4>
+                                <h4 class="card-title mb-0 flex-grow-1">@lang('translation.assessments_by_licensee')</h4>
                             </div><!-- end card header -->
 
                             <div class="card-body p-0 pb-2">
@@ -174,12 +173,8 @@
                         <!-- card -->
                         <div class="card card-height-100">
                             <div class="card-header align-items-center d-flex">
-                                <h4 class="card-title mb-0 flex-grow-1">Department-wise Assessments</h4>
-                                <div class="flex-shrink-0">
-                                    <button type="button" class="btn btn-soft-primary btn-sm">
-                                        Export Report
-                                    </button>
-                                </div>
+                                <h4 class="card-title mb-0 flex-grow-1">@lang('translation.department_assessments')</h4>
+                                
                             </div><!-- end card header -->
                             <div class="card-body p-0 pb-2">
                                 <div class="w-100">
@@ -199,7 +194,7 @@
                     <div class="col-xl-6">
                         <div class="card">
                             <div class="card-header align-items-center d-flex">
-                                <h4 class="card-title mb-0 flex-grow-1">Template Usage Analytics</h4>
+                                <h4 class="card-title mb-0 flex-grow-1">@lang('translation.template_usage_analytics')</h4>
                             </div><!-- end card header -->
 
                             <div class="card-body">
