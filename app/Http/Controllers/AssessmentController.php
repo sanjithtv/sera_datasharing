@@ -222,10 +222,10 @@ public function upload(Request $request)
     $sheetMapping = TemplateSheet::where('template_id', $validated['licensee_template_id'])
     ->pluck('id', 'sheet_name')
     ->toArray();
+    $sheetMapping["Master"] = 1 ;
     //$import = new MultiSheetImport($assessment->id, $validated['licensee_id'], $sheetMapping);
     //Excel::import($import, $request->file('file'));
     //$rows = Excel::toArray([], $request->file('file'));
-    
     $import = new DynamicTemplateImport(
             $assessment->id,
             $assessment->licensee_id,
