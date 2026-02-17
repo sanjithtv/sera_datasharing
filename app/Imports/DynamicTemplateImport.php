@@ -164,10 +164,15 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                             switch ($key->type) {
                                 case 'number':
                                     $value = is_numeric($value) ? +$value : null;
-                                    $rules[$key->short_code] = array_merge(
+                                    if($key->mandatory == 3){
+                                        $rules[$key->short_code] = array_merge(['nullable'],['numeric']);    
+                                    }else{
+                                        $rules[$key->short_code] = array_merge(
                                         $key->mandatory ? ['required'] : ['nullable'],
                                         ['numeric']
-                                    );
+                                        );
+                                    }
+                                    
                                     break;
 
                                 case 'number_percentage':

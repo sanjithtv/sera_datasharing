@@ -23,6 +23,13 @@ App::setLocale(session('lang'));
         <!--end col-->
         <div class="col-xxl-12">
             <h4 class="mb-sm-1 font-size-18">@lang('translation.assessments')</h4>
+            @if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
+
+@if(session('error'))
+    <div class="alert alert-danger">{{ session('error') }}</div>
+@endif
             <div class="card" id="companyList">
                 <div class="card-header align-items-center d-flex">
                                     <h4 class="card-title mb-0 flex-grow-1">Upload File</h4>

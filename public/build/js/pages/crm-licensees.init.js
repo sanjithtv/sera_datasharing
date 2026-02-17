@@ -38,8 +38,8 @@ var options = {
         "licensee_ar",
         "subfolder",
         "departmentname",
-        "status",
-        ],
+        "status"
+    ],
     page: perPage,
     pagination: true,
     plugins: [

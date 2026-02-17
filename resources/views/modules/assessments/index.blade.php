@@ -25,7 +25,7 @@ App::setLocale(session('lang'));
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="@lang('translation.search')...">
+                                <input type="text" class="form-control search" id="tableSearch" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -211,7 +211,10 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(err => console.error('Error:', err));
     });
+
 });
+
+
 </script>
 @endsection
 

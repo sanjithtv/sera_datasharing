@@ -157,7 +157,7 @@ class LicenseeTemplateController extends Controller
             $validated = $request->validate([
                 'desc_en' => 'required|string|max:255',
                 'desc_ar' => 'nullable|string|max:255',
-                'mandatory' => 'required|boolean',
+                'mandatory' => 'required|int',
                 'type' => ['required', Rule::in(['number','text','select','number_percentage','date','datetime','time'])],
             ]);
 

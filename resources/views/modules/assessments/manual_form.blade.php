@@ -82,10 +82,17 @@ App::setLocale(session('lang'));
 
                                                 {{-- ✅ NUMBER --}}
                                                 @case('number')
+                                                    @if($key->mandatory == 3)
+                                                    <input type="number"
+                                                           name="sheets[{{ $sheet->id }}][1][{{ $key->id }}]"
+                                                           class="form-control"
+                                                           readonly>
+                                                    @else
                                                     <input type="number"
                                                            name="sheets[{{ $sheet->id }}][1][{{ $key->id }}]"
                                                            class="form-control"
                                                            @if($key->mandatory) required @endif>
+                                                    @endif
                                                     @break
 
                                                 {{-- ✅ TEXT --}}

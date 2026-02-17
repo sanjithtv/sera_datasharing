@@ -115,7 +115,7 @@ $profileUser = Auth::user()->profileUser;
                         <a class="dropdown-item" href="{{ route('profileuser.show') }}"><i class="mdi mdi-account-circle text-muted fs-16 align-middle me-1"></i> <span class="align-middle">@lang('translation.profile')</span></a>
                         
                        
-                        <a class="dropdown-item" href="pages-faqs"><i class="mdi mdi-lifebuoy text-muted fs-16 align-middle me-1"></i> <span class="align-middle">Help</span></a>
+                        <a class="dropdown-item" href="{{ asset('../storage/app/public/manual/SERA USER MANUAL V1.pdf') }}" target="_blank"><i class="mdi mdi-lifebuoy text-muted fs-16 align-middle me-1"></i> <span class="align-middle">Help</span></a>
                         <div class="dropdown-divider"></div>
                         
                         <a class="dropdown-item " href="javascript:void();" onclick="event.preventDefault(); document.getElementById('logout-form').submit();"><i class="bx bx-power-off font-size-16 align-middle me-1"></i> <span key="t-logout">@lang('translation.logout')</span></a>

@@ -209,7 +209,9 @@ public function upload(Request $request)
     ]);
 
 
-   
+   try{
+
+
     $assessment = Assessment::find($request->assessment_id);
      SlaveMasterData::where('assessment_id', $assessment->id)->delete();
 
@@ -249,6 +251,9 @@ public function upload(Request $request)
         'errorsPerSheet' => $import->errorsPerSheet,
         'namePerSheet' => $import->namePerSheet
     ]);
+    }catch(\Exception $e){
+        return back()->with('error', 'Import failed: ' . $e->getMessage());
+    }
 }
 
 
@@ -501,7 +506,12 @@ public function importData(Request $request, Assessment $assessment)
 
         $rules = [];
         foreach ($template->keys as $key) {
-            $rules[$key->short_code] = $key->mandatory ? 'required' : 'nullable';
+            if($key->mandatory==3){
+                $rules[$key->short_code] = 'nullable';
+            }else{
+                $rules[$key->short_code] = $key->mandatory ? 'required' : 'nullable';    
+            }
+            
         }
 
         $validated = $request->validate($rules);
@@ -516,7 +526,7 @@ public function importData(Request $request, Assessment $assessment)
                         'template_key_value' => $validated[$key->short_code],
                         'type' => $key->type,
                         'entry_counter' => 1,
-                    ]);
+                    ]);    
                 }
             }
         });
@@ -574,6 +584,7 @@ public function storeManualSheet(Request $request)
         return back()->withErrors(['msg' => 'No data found for this sheet.']);
     }
     $assessment = Assessment::findOrFail($request->assessment_id);
+
 
     foreach ($sheetData as $entryCounter => $row) {
 
@@ -637,18 +648,41 @@ public function storeManualSheet(Request $request)
                 }
             }
             $maxEntryCounter = AssessmentMasterData::where('assessment_id', $assessment->id)->max('entry_counter');
-
+            if($maxEntryCounter<=0){
+                $maxEntryCounter = 1;
+            }
             // ✅ SAVE INTO MASTER DATA
+            if($key->mandatory == 3){
+
+                $maxAutoCounter = AssessmentMasterData::where('assessment_id', $assessment->id)->where('licensee_id', $assessment->licensee_id)->where('template_sheet_id', $sheetId)->where('template_key_id', $key->id)->max('template_key_value');
+                if($maxAutoCounter>0){
+                    $maxAutoCounter++;
+                }else{
+                    $maxAutoCounter = 1;
+                }    
+                AssessmentMasterData::create([
+                    'licensee_id' => $assessment->licensee_id,
+                    'assessment_id' => $assessment->id,
+                    'template_sheet_id' => $sheetId,
+                    'template_key_id' => $key->id,
+                    'template_key_value' => $maxAutoCounter,
+                    'type' => $key->type,
+                    'entry_counter' => $maxEntryCounter,
+                ]);    
+            }else{
+                AssessmentMasterData::create([
+                    'licensee_id' => $assessment->licensee_id,
+                    'assessment_id' => $assessment->id,
+                    'template_sheet_id' => $sheetId,
+                    'template_key_id' => $key->id,
+                    'template_key_value' => $value,
+                    'type' => $key->type,
+                    'entry_counter' => $maxEntryCounter,
+                ]);    
+            }
+
             
-            AssessmentMasterData::create([
-                'licensee_id' => $assessment->licensee_id,
-                'assessment_id' => $assessment->id,
-                'template_sheet_id' => $sheetId,
-                'template_key_id' => $key->id,
-                'template_key_value' => $value,
-                'type' => $key->type,
-                'entry_counter' => $maxEntryCounter,
-            ]);
+            
         }
     }
     return back()->with('success', 'Sheet data saved successfully.');
@@ -662,6 +696,8 @@ public function clearData($assessmentId)
 
         // Delete all master data rows linked to this assessment
         AssessmentMasterData::where('assessment_id', $assessmentId)->delete();
+        $assessment = Assessment::findOrFail($assessmentId);
+        $assessment->update(['status' => 'draft']);
 
         DB::commit();
 

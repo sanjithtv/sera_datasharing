@@ -84,7 +84,7 @@ var companyList = new List("companyList", options).on("updated", function (list)
 
 
 
-var table = document.getElementById("customerTable");
+var table = document.getElementById("customerTable1");
 // save all tr
 var tr = table.getElementsByTagName("tr");
 var trlist = table.querySelectorAll(".list tr");

@@ -192,8 +192,9 @@ App::setLocale(session('lang'));
 
                                     <td>
                                         <select name="mandatory" class="form-select">
-                                            <option value="1" {{ $key->mandatory ? 'selected' : '' }}>Yes</option>
+                                            <option value="1" {{ $key->mandatory == '1' ? 'selected' : '' }}>Yes</option>
                                             <option value="0" {{ !$key->mandatory ? 'selected' : '' }}>No</option>
+                                            <option value="3" {{ $key->mandatory == '3' ? 'selected' : '' }}>Auto</option>
                                         </select>
                                     </td>
 

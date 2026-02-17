@@ -34,9 +34,11 @@ var options = {
     valueNames: [
         "id",
         "licensee",
+        "classification",
         "subfolder",
+        "version",
         "departmentname",
-        "status",
+        "status"
         ],
     page: perPage,
     pagination: true,

@@ -31,7 +31,7 @@ App::setLocale(session('lang'));
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="@lang('translation.search')...">
+                                <input type="text" class="form-control search" id="searchText" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -59,7 +59,7 @@ App::setLocale(session('lang'));
                                         <th class="sort" data-sort="licensee" scope="col">@lang('translation.licensee')</th>
                                         <th class="sort" data-sort="classification" scope="col">@lang('translation.classification')</th>
                                         <th class="sort" data-sort="subfolder" scope="col">@lang('translation.subfolder')</th>
-                                        <th>@lang('translation.version')</th>
+                                        <th class="sort" data-sort="version" scope="col">@lang('translation.version')</th>
                                         <th class="sort" data-sort="departmentname" scope="col">@lang('translation.department')</th>
                                         <th>@lang('translation.keys')</th>
                                         <th class="sort" data-sort="status" scope="col">@lang('translation.status')</th>
@@ -80,7 +80,7 @@ App::setLocale(session('lang'));
                                         <td class="licensee">{{ $lang === 'ar' ? ($template->licensee->name_ar ?? '—') : ($template->licensee->name_en ?? '—') }}</td>
                                         <td class="classification">{{ $lang === 'ar' ? ($template->classification->name_ar ?? '—') : ($template->classification->name_en ?? '—') }}</td>
                                         <td class="subfolder">{{ $lang === 'ar' ? ($template->subfolder->name_ar ?? '—') : ($template->subfolder->name_en ?? '—') }} </td>
-                                        <td>{{ $template->version }}</td>
+                                        <td class="version">{{ strtolower($template->version) }}</td>
                                         <td class="departmentname">{{ $lang === 'ar' ? ($template->department->name_ar ?? '—') : ($template->department->name_en ?? '—') }}</td>
                                         <td>{{ $template->keys_count }}</td>
                                         <td class="status">
@@ -175,7 +175,8 @@ App::setLocale(session('lang'));
 <script src="{{ URL::asset('build/libs/list.js/list.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/list.pagination.js/list.pagination.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
-<script src="{{ URL::asset('build/js/pages/crm-licensees.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/crm-licensee_templates.init.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
+
 @endsection
 
