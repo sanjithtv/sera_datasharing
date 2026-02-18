@@ -156,7 +156,26 @@
                                             <td>{{ $row->row_index }}</td>
 
                                             @foreach ($headers as $head)
-                                                <td>{{ $rowValues[$head] }}</td>
+                                                @php
+                                                    $cellVal = $rowValues[$head] ?? null;
+                                                    $sentinels = [
+                                                        '__INVALID_DATE__'     => ['text' => 'Invalid Date',     'icon' => '⚠'],
+                                                        '__INVALID_NUMBER__'   => ['text' => 'Invalid Number',   'icon' => '⚠'],
+                                                        '__INVALID_TIME__'     => ['text' => 'Invalid Time',     'icon' => '⚠'],
+                                                    ];
+                                                    $isSentinel = is_string($cellVal) && isset($sentinels[$cellVal]);
+                                                @endphp
+                                                <td>
+                                                    @if ($isSentinel)
+                                                        <span class="badge bg-warning text-dark fw-semibold">
+                                                            {{ $sentinels[$cellVal]['icon'] }} {{ $sentinels[$cellVal]['text'] }}
+                                                        </span>
+                                                    @elseif ($cellVal === null || $cellVal === '')
+                                                        <span class="text-muted">—</span>
+                                                    @else
+                                                        {{ $cellVal }}
+                                                    @endif
+                                                </td>
                                             @endforeach
 
                                             <td>

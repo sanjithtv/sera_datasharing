@@ -223,24 +223,15 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                         break;
 
                                     case 'date':
-                                        if (is_numeric($value)) {
-                                            $value = $value ? Carbon::parse($value)->format('Y-m-d') : null;
-                                            $rules[$key->short_code] = array_merge(
-                                                $key->mandatory ? ['required'] : ['nullable'],
-                                                ['date_format:dd-mm-yyyy']
-                                            );
-                                        }else{
-                                            $value = $value ? Carbon::parse($value)->format('Y-m-d') : null;
-                                            $rules[$key->short_code] = array_merge(
-                                                $key->mandatory ? ['required'] : ['nullable'],
-                                                ['date']
-                                            );    
-                                        }
-                                        
+                                        $value = $this->parent->smartParseDate($value, 'Y-m-d');
+                                        $rules[$key->short_code] = array_merge(
+                                            $key->mandatory ? ['required'] : ['nullable'],
+                                            ['date']
+                                        );
                                         break;
 
                                     case 'datetime':
-                                        $value = $value ? Carbon::parse($value)->format('Y-m-d H:i:s') : null;
+                                        $value = $this->parent->smartParseDate($value, 'Y-m-d H:i:s');
                                         $rules[$key->short_code] = array_merge(
                                             $key->mandatory ? ['required'] : ['nullable'],
                                             ['date']
@@ -248,7 +239,7 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                         break;
 
                                     case 'time':
-                                        $value = $value ? Carbon::parse($value)->format('H:i:s') : null;
+                                        $value = $this->parent->smartParseTime($value);
                                         $rules[$key->short_code] = array_merge(
                                             $key->mandatory ? ['required'] : ['nullable'],
                                             ['date_format:H:i:s']
@@ -319,6 +310,171 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
         return $imports;
     }
+
+ /**
+  * Provided By Mohammed AI Crunch
+     * ✅ Parse a date value from any common format and return it in the desired output format.
+     *    Returns null for empty values.
+     *    Returns '__INVALID_DATE__' if the value cannot be parsed as a valid date.
+     */
+    public function smartParseDate($value, string $outputFormat = 'Y-m-d'): ?string
+    {
+        // Already a Carbon/DateTime instance (e.g. from PhpSpreadsheet Excel date detection)
+        if ($value instanceof Carbon) {
+            return $value->format($outputFormat);
+        }
+        if ($value instanceof DateTime) {
+            return Carbon::instance($value)->format($outputFormat);
+        }
+
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        // Numeric value → treat as Excel date serial (e.g. 45777 = 2025-04-30)
+        // Maatwebsite Excel passes raw serials for date-formatted cells in ToCollection mode.
+        if (is_int($value) || is_float($value) || (is_numeric($value) && !str_contains((string) $value, '-') && !str_contains((string) $value, '/'))) {
+            try {
+                $dt = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $value);
+                return Carbon::instance($dt)->format($outputFormat);
+            } catch (\Exception $e) {
+                // Fall through to string parsing
+            }
+        }
+
+        $str = trim((string) $value);
+
+        // Try formats in priority order:
+        //   1. ISO (unambiguous)
+        //   2. Day-first / European  (dd-mm-yyyy) — most common internationally
+        //   3. Month-first / US      (mm-dd-yyyy) — fallback; only succeeds when day > 12
+        $formats = [
+            // ISO — unambiguous
+            'Y-m-d',
+            'Y/m/d',
+            'Y-m-d H:i:s',
+            'Y-m-d H:i',
+            // Abbreviated month name (e.g. 30-Apr-25, 30-Apr-2025, 1-Apr-25)
+            'd-M-y',   // 30-Apr-25
+            'd-M-Y',   // 30-Apr-2025
+            'j-M-y',   // 1-Apr-25  (unpadded day)
+            'j-M-Y',   // 1-Apr-2025
+            'd/M/y',   // 30/Apr/25
+            'd/M/Y',   // 30/Apr/2025
+            'j/M/y',
+            'j/M/Y',
+            'd M y',   // 30 Apr 25
+            'd M Y',   // 30 Apr 2025
+            'j M y',
+            'j M Y',
+            // Full month name (e.g. 30 April 2025)
+            'd F Y',
+            'j F Y',
+            // Day-first numeric — European (dd-mm-yyyy)
+            'd-m-Y',
+            'd/m/Y',
+            'd.m.Y',
+            'j-n-Y',   // unpadded day/month, dash
+            'j/n/Y',   // unpadded day/month, slash
+            'j.n.Y',   // unpadded day/month, dot
+            // Month-first numeric — US (mm-dd-yyyy), tried last
+            'm-d-Y',
+            'm/d/Y',
+            'n-j-Y',   // unpadded month/day, dash
+            'n/j/Y',   // unpadded month/day, slash
+        ];
+
+        foreach ($formats as $fmt) {
+            try {
+                $date = Carbon::createFromFormat($fmt, $str);
+                if ($date === false) {
+                    continue;
+                }
+
+                // Reject overflows (e.g. month 13, day 32, Feb 30)
+                $errors = Carbon::getLastErrors();
+                if ($errors && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+                    continue;
+                }
+
+                return $date->format($outputFormat);
+            } catch (\Exception $e) {
+                continue;
+            }
+        }
+
+        // Last resort: Carbon::parse handles many natural formats (e.g. "30-Apr-25", "April 30 2025")
+        // Only safe for strings that contain at least one letter (unambiguous month name present)
+        // to avoid Carbon::parse silently misinterpreting pure-numeric date strings.
+        if (preg_match('/[a-zA-Z]/', $str)) {
+            try {
+                $date = Carbon::parse($str);
+                $errors = Carbon::getLastErrors();
+                if (!$errors || ($errors['warning_count'] === 0 && $errors['error_count'] === 0)) {
+                    return $date->format($outputFormat);
+                }
+            } catch (\Exception $e) {
+                // Fall through
+            }
+        }
+
+        return '__INVALID_DATE__';
+    }
+
+    /**
+     * Provided By Mohammed AI Crunch
+     * ✅ Parse a time value from any common format and return it as H:i:s.
+     *    Returns null for empty values.
+     *    Returns '__INVALID_TIME__' if the value cannot be parsed.
+     */
+    public function smartParseTime($value): ?string
+    {
+        if ($value instanceof Carbon) {
+            return $value->format('H:i:s');
+        }
+        if ($value instanceof DateTime) {
+            return Carbon::instance($value)->format('H:i:s');
+        }
+
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        $str = trim((string) $value);
+
+        $formats = [
+            'H:i:s',
+            'H:i',
+            'G:i:s',
+            'G:i',
+            'g:i:s A',
+            'g:i A',
+            'g:i:s a',
+            'g:i a',
+        ];
+
+        foreach ($formats as $fmt) {
+            try {
+                $time = Carbon::createFromFormat($fmt, $str);
+                if ($time === false) {
+                    continue;
+                }
+
+                $errors = Carbon::getLastErrors();
+                if ($errors && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+                    continue;
+                }
+
+                return $time->format('H:i:s');
+            } catch (\Exception $e) {
+                continue;
+            }
+        }
+
+        return '__INVALID_TIME__';
+    }
+
+
 
     /**
      * ✅ Validate Excel headers against LicenseeTemplateKey
