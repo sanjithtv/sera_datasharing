@@ -44,10 +44,14 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
         foreach ($this->sheetMapping as $sheetName => $sheetId) {
 
-            //$this->namePerSheet[$sheetName] = $sheetId;
+            // ✅ Skip the Master sheet — it is not part of the data template
+            // and not all uploaded files contain it. Requesting it causes
+            // "sheet name out of bounds" from PhpSpreadsheet.
+            if ($sheetName === 'Master') {
+                continue;
+            }
 
             // ✅ Initialize error bag per sheet
-            if($sheetName!="Master")
             $this->errorsPerSheet[$sheetName] = [];
 
             // ✅ Load template keys dynamically (column-wise)
@@ -57,7 +61,7 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                 ->get();
 
             //if ($keys->isEmpty()) continue;
-                
+
             $parent = $this;
             $imports[$sheetName] = new class(
                 $this->assessmentId,
@@ -123,7 +127,7 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
                     if (!empty($headerErrors)) {
          $sheet_valid_res = LicenseeTemplateSheet::where('template_id',$this->licenseeTemplateId)->where('id',$this->sheetId)->first();
-        if($sheet_valid_res){               
+        if($sheet_valid_res){
             // ❌ Block entire import
             $this->parent->canProceed = false;
 
@@ -139,15 +143,15 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
     }
 
          $sheet_valid_res = LicenseeTemplateSheet::where('template_id',$this->licenseeTemplateId)->where('id',$this->sheetId)->first();
-        if($sheet_valid_res){        
+        if($sheet_valid_res){
                     foreach ($rows as $rowIndex => $row) {
-                       
+
                         if ($rowIndex === 0) continue; // ✅ Header skip
 
                         $value_t = $row[0] instanceof Cell
                                 ? $row[0]->getCalculatedValue()
                                 : $row[0];
-                            
+
                         if($value_t!=''){
                             $rawRow = [];
 
@@ -176,13 +180,11 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                     $value = trim(html_entity_decode($value));
                                 }
 
-                                if (!is_null($value) && $value !== '') {
-                                        $rawRow[] = $value;
-                                }
-
-                                /*if ($value === '') $value = null;
-                                if($value!=null)
-                                    $rawRow[] = $value;*/
+                                // ✅ Always append — even null/empty — so that column indices
+                                // stay aligned with the template keys. Skipping empty cells
+                                // would shift every subsequent index and map values to the
+                                // wrong template columns.
+                                $rawRow[] = ($value === '') ? null : $value;
                             }
                             // ✅ FIELD MAPPING + TYPE CASTING + VALIDATION
                             $mapped = [];
@@ -190,20 +192,20 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                             foreach ($this->keys as $index => $key) {
 
                                 $value = $rawRow[$index] ?? null;
-                                
+
                                 // ✅ TYPE HANDLING
                                 switch ($key->type) {
                                     case 'number':
                                         $value = is_numeric($value) ? +$value : null;
                                         if($key->mandatory == 3){
-                                            $rules[$key->short_code] = array_merge(['nullable'],['numeric']);    
+                                            $rules[$key->short_code] = array_merge(['nullable'],['numeric']);
                                         }else{
                                             $rules[$key->short_code] = array_merge(
                                             $key->mandatory ? ['required'] : ['nullable'],
                                             ['numeric']
                                             );
                                         }
-                                        
+
                                         break;
 
                                     case 'number_percentage':
@@ -251,28 +253,51 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                             }
 
                             // ✅ VALIDATION
-                            $validator = Validator::make($mapped, $rules);
+                            // Laravel's validator treats dots in key names as nested array notation
+                            // (e.g. "S.no" → looks for $data['S']['no']).
+                            // Sanitize keys before validation, pass original names as custom attributes
+                            // so error messages still read "S.no" not the placeholder, then restore
+                            // original keys on the error array for display/storage.
+                            $dotPlaceholder = '____DOT____';
+                            $safeMapped     = [];
+                            $safeRules      = [];
+                            $customAttribs  = [];  // safeKey => original key (for readable messages)
+                            foreach ($mapped as $k => $v) {
+                                $safeKey               = str_replace('.', $dotPlaceholder, $k);
+                                $safeMapped[$safeKey]  = $v;
+                                $customAttribs[$safeKey] = $k;  // e.g. "S____DOT____no" => "S.no"
+                            }
+                            foreach ($rules as $k => $v) {
+                                $safeRules[str_replace('.', $dotPlaceholder, $k)] = $v;
+                            }
+
+                            $validator = Validator::make($safeMapped, $safeRules, [], $customAttribs);
 
                             $status = $validator->fails() ? 'pending' : 'processed';
-                            $validationErrors = $validator->fails()
-                                ? $validator->errors()->toArray()
-                                : [];
+                            $validationErrors = [];
+                            if ($validator->fails()) {
+                                foreach ($validator->errors()->toArray() as $safeKey => $messages) {
+                                    // Restore original key name (with dots) for storage & display
+                                    $originalKey = str_replace($dotPlaceholder, '.', $safeKey);
+                                    $validationErrors[$originalKey] = $messages;
+                                }
+                            }
 
                             // ✅ GLOBAL FLAGS FOR PREVIEW
-                            
+
                             if ($status === 'pending') {
                                 $this->parent->canProceed = false;
                                 $this->parent->errorsPerSheet[$this->sheetName][$rowIndex] = $validationErrors;
                             }
                             $this->parent->namePerSheet[$this->sheetName] = $this->sheetId;
 
-                       
+
                             //$this->errorsPerSheet[$this->sheetName][$rowIndex] = $validationErrors;
                             //$this->namePerSheet[$this->sheetName] = $this->sheetId;
 
                             // ✅ FINAL ROW STORAGE (ALWAYS STORED)
-                            
-                            
+
+
                                 $this->buffer[] = [
                                     'assessment_id'      => $this->assessmentId,
                                     'licensee_id'        => $this->licenseeId,
@@ -294,9 +319,9 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                 if (count($this->buffer) >= 500) {
                                     SlaveMasterData::insert($this->buffer);
                                     $this->buffer = [];
-                                }    
+                                }
                             }
-                            
+
                         }
                     }
 
@@ -333,9 +358,17 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
         // Numeric value → treat as Excel date serial (e.g. 45777 = 2025-04-30)
         // Maatwebsite Excel passes raw serials for date-formatted cells in ToCollection mode.
+        // Guard: values < 1 are pure time-of-day fractions (0.0 = midnight, 0.999 = ~23:59),
+        // NOT date serials. Passing them to excelToDateTimeObject() returns 1970-01-01 which
+        // is misleading, so we reject them as invalid dates instead.
         if (is_int($value) || is_float($value) || (is_numeric($value) && !str_contains((string) $value, '-') && !str_contains((string) $value, '/'))) {
+            $floatVal = (float) $value;
+            if ($floatVal < 1) {
+                // This is a time-only fraction — not a valid date serial
+                return '__INVALID_DATE__';
+            }
             try {
-                $dt = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $value);
+                $dt = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($floatVal);
                 return Carbon::instance($dt)->format($outputFormat);
             } catch (\Exception $e) {
                 // Fall through to string parsing
@@ -438,6 +471,18 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
         if ($value === null || trim((string) $value) === '') {
             return null;
+        }
+
+        // Numeric value → Excel time fraction (e.g. 0.3058 = 07:20:21)
+        // Excel stores time as a fraction of a 24-hour day.
+        // Maatwebsite Excel passes raw fractions for time-formatted cells in ToCollection mode.
+        if (is_int($value) || is_float($value) || is_numeric($value)) {
+            try {
+                $dt = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $value);
+                return Carbon::instance($dt)->format('H:i:s');
+            } catch (\Exception $e) {
+                // Fall through to string parsing
+            }
         }
 
         $str = trim((string) $value);
