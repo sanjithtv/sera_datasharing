@@ -168,7 +168,9 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                     $value = Carbon::instance(
                                         Date::excelToDateTimeObject($value)
                                     );
+                                    $value = Carbon::instance($value)->format('d-m-Y');
                                 }
+
 
                                 if (is_string($value)) {
                                     $value = trim(html_entity_decode($value));
@@ -185,7 +187,6 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                             // ✅ FIELD MAPPING + TYPE CASTING + VALIDATION
                             $mapped = [];
                             $rules  = [];
-
                             foreach ($this->keys as $index => $key) {
 
                                 $value = $rawRow[$index] ?? null;
@@ -222,11 +223,20 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                         break;
 
                                     case 'date':
-                                        $value = $value ? Carbon::parse($value)->format('Y-m-d') : null;
-                                        $rules[$key->short_code] = array_merge(
-                                            $key->mandatory ? ['required'] : ['nullable'],
-                                            ['date']
-                                        );
+                                        if (is_numeric($value)) {
+                                            $value = $value ? Carbon::parse($value)->format('Y-m-d') : null;
+                                            $rules[$key->short_code] = array_merge(
+                                                $key->mandatory ? ['required'] : ['nullable'],
+                                                ['date_format:dd-mm-yyyy']
+                                            );
+                                        }else{
+                                            $value = $value ? Carbon::parse($value)->format('Y-m-d') : null;
+                                            $rules[$key->short_code] = array_merge(
+                                                $key->mandatory ? ['required'] : ['nullable'],
+                                                ['date']
+                                            );    
+                                        }
+                                        
                                         break;
 
                                     case 'datetime':
