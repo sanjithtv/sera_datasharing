@@ -94,10 +94,27 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                 public function collection(Collection $rows)
                 {
                     // ✅ HEADER CAPTURE (row 0)
-                    $this->headers = array_map(
-                        'trim',
-                        collect($rows[0] ?? [])->toArray()
-                    );
+                    $this->headers = collect($rows[0] ?? [])
+    ->map(function ($value) {
+
+        // Handle RichText
+        if ($value instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
+            $value = $value->getPlainText();
+        }
+
+        // Trim strings
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+
+        return $value;
+    })
+    ->filter(function ($value) {
+        // Remove null / blank / empty
+        return !is_null($value) && $value !== '';
+    })
+    ->values()   // Re-index array keys
+    ->toArray();
 
                     $headerErrors = $this->parent->validateHeaders(
         $this->headers,
