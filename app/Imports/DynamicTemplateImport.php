@@ -148,9 +148,27 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
                         if ($rowIndex === 0) continue; // ✅ Header skip
 
-                        $value_t = $row[0] instanceof Cell
+                        // Excel formula error strings (broken references, bad values, etc.)
+                        $excelErrorStrings = ['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A', '#GETTING_DATA'];
+
+                        try {
+                            $value_t = $row[0] instanceof Cell
                                 ? $row[0]->getCalculatedValue()
                                 : $row[0];
+                        } catch (\PhpOffice\PhpSpreadsheet\Calculation\Exception $e) {
+                            // Fall back to Excel's own cached result
+                            $value_t = ($row[0] instanceof Cell) ? $row[0]->getOldCalculatedValue() : null;
+                        }
+
+                        // If PhpSpreadsheet returned a formula error, fall back to the value
+                        // Excel cached in the file when it was last saved (getOldCalculatedValue).
+                        // This is the real computed value the user saw in Excel.
+                        if ($row[0] instanceof Cell && is_string($value_t) && in_array(strtoupper(trim($value_t)), $excelErrorStrings)) {
+                            $cached = $row[0]->getOldCalculatedValue();
+                            $value_t = ($cached !== null && !(is_string($cached) && in_array(strtoupper(trim($cached)), $excelErrorStrings)))
+                                ? $cached
+                                : null;
+                        }
 
                         if($value_t!=''){
                             $rawRow = [];
@@ -158,9 +176,27 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                             foreach ($row as $cell) {
 
                                 // ✅ Formula + cross-sheet resolved
-                                $value = $cell instanceof Cell
-                                    ? $cell->getCalculatedValue()
-                                    : $cell;
+                                // Wrap in try/catch in case PhpSpreadsheet throws on a broken formula
+                                try {
+                                    $value = $cell instanceof Cell
+                                        ? $cell->getCalculatedValue()
+                                        : $cell;
+                                } catch (\PhpOffice\PhpSpreadsheet\Calculation\Exception $e) {
+                                    // Fall back to Excel's own cached result on calculation failure
+                                    $value = ($cell instanceof Cell) ? $cell->getOldCalculatedValue() : null;
+                                }
+
+                                // ✅ If PhpSpreadsheet returned a formula error string (#REF!, #VALUE!,
+                                // #N/A, etc.), fall back to the value Excel itself cached in the file
+                                // (getOldCalculatedValue). This is the real value the user saw in Excel
+                                // before the reference broke during export/copy. Only null out if the
+                                // cached value is also an error or empty.
+                                if ($cell instanceof Cell && is_string($value) && in_array(strtoupper(trim($value)), $excelErrorStrings)) {
+                                    $cached = $cell->getOldCalculatedValue();
+                                    $value = ($cached !== null && !(is_string($cached) && in_array(strtoupper(trim($cached)), $excelErrorStrings)))
+                                        ? $cached
+                                        : null;
+                                }
 
                                 // ✅ Rich text → plain string
                                 if ($value instanceof RichText) {
@@ -168,13 +204,16 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                 }
 
                                 // ✅ Excel Date / Time conversion
-                                if ($cell instanceof Cell && Date::isDateTime($cell)) {
-                                    $value = Carbon::instance(
-                                        Date::excelToDateTimeObject($value)
-                                    );
-                                    $value = Carbon::instance($value)->format('d-m-Y');
+                                if ($cell instanceof Cell && $value !== null && Date::isDateTime($cell)) {
+                                    try {
+                                        $value = Carbon::instance(
+                                            Date::excelToDateTimeObject($value)
+                                        );
+                                        $value = Carbon::instance($value)->format('d-m-Y');
+                                    } catch (\Exception $e) {
+                                        $value = null;
+                                    }
                                 }
-
 
                                 if (is_string($value)) {
                                     $value = trim(html_entity_decode($value));
@@ -194,22 +233,32 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                 $value = $rawRow[$index] ?? null;
 
                                 // ✅ TYPE HANDLING
+                                // Strategy: only replace $value with the cast/parsed result when the
+                                // cast succeeds. If it fails, keep the original raw string so that:
+                                //   1. The preview table shows the actual bad value (not "—")
+                                //   2. The validator reports a meaningful error ("must be a number")
+                                //      rather than "required" (which only appears when value is null).
                                 switch ($key->type) {
                                     case 'number':
-                                        $value = is_numeric($value) ? +$value : null;
-                                        if($key->mandatory == 3){
-                                            $rules[$key->short_code] = array_merge(['nullable'],['numeric']);
-                                        }else{
+                                        if (is_numeric($value)) {
+                                            $value = +$value; // successful cast
+                                        }
+                                        // else: keep original string — 'numeric' rule will fail with proper message
+                                        if ($key->mandatory == 3) {
+                                            $rules[$key->short_code] = array_merge(['nullable'], ['numeric']);
+                                        } else {
                                             $rules[$key->short_code] = array_merge(
-                                            $key->mandatory ? ['required'] : ['nullable'],
-                                            ['numeric']
+                                                $key->mandatory ? ['required'] : ['nullable'],
+                                                ['numeric']
                                             );
                                         }
-
                                         break;
 
                                     case 'number_percentage':
-                                        $value = is_numeric($value) ? (float)$value : null;
+                                        if (is_numeric($value)) {
+                                            $value = (float) $value; // successful cast
+                                        }
+                                        // else: keep original string — 'numeric' rule will fail with proper message
                                         $rules[$key->short_code] = array_merge(
                                             $key->mandatory ? ['required'] : ['nullable'],
                                             ['numeric', 'min:0', 'max:100']
@@ -225,7 +274,11 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                         break;
 
                                     case 'date':
-                                        $value = $this->parent->smartParseDate($value, 'Y-m-d');
+                                        $parsed = $this->parent->smartParseDate($value, 'Y-m-d');
+                                        if ($parsed !== null && $parsed !== '__INVALID_DATE__') {
+                                            $value = $parsed; // successful parse — use normalised date
+                                        }
+                                        // else: keep original string — 'date' rule will fail with proper message
                                         $rules[$key->short_code] = array_merge(
                                             $key->mandatory ? ['required'] : ['nullable'],
                                             ['date']
@@ -233,7 +286,11 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                         break;
 
                                     case 'datetime':
-                                        $value = $this->parent->smartParseDate($value, 'Y-m-d H:i:s');
+                                        $parsed = $this->parent->smartParseDate($value, 'Y-m-d H:i:s');
+                                        if ($parsed !== null && $parsed !== '__INVALID_DATE__') {
+                                            $value = $parsed;
+                                        }
+                                        // else: keep original string — 'date' rule will fail with proper message
                                         $rules[$key->short_code] = array_merge(
                                             $key->mandatory ? ['required'] : ['nullable'],
                                             ['date']
@@ -241,7 +298,11 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                         break;
 
                                     case 'time':
-                                        $value = $this->parent->smartParseTime($value);
+                                        $parsed = $this->parent->smartParseTime($value);
+                                        if ($parsed !== null && $parsed !== '__INVALID_TIME__') {
+                                            $value = $parsed;
+                                        }
+                                        // else: keep original string — 'date_format' rule will fail with proper message
                                         $rules[$key->short_code] = array_merge(
                                             $key->mandatory ? ['required'] : ['nullable'],
                                             ['date_format:H:i:s']

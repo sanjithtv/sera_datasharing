@@ -131,7 +131,7 @@ class AssessmentController extends Controller
     /**
      * STEP 1 — Upload file, create assessment, validate + cache
      */
-   
+
 /*    public function upload(Request $request)
 {
     $validated = $request->validate([
@@ -218,14 +218,18 @@ public function upload(Request $request)
     /** ------------------------------------------------------------------
      * 1. Determine sheet → template mapping for this template
      * ------------------------------------------------------------------*/
-    // Example (can later come from DB table `template_sheets`)
     $sheetMapping = TemplateSheet::where('template_id', $validated['licensee_template_id'])
     ->pluck('id', 'sheet_name')
     ->toArray();
-    
-    //$import = new MultiSheetImport($assessment->id, $validated['licensee_id'], $sheetMapping);
-    //Excel::import($import, $request->file('file'));
-    //$rows = Excel::toArray([], $request->file('file'));
+
+    /** ------------------------------------------------------------------
+     * 2. Pre-process the uploaded file: resolve all formula cells to their
+     *    actual values so cross-sheet / broken references (#REF!, #VALUE!,
+     *    etc.) are replaced with what Excel last computed before we pass
+     *    the file to the Maatwebsite importer.
+     * ------------------------------------------------------------------*/
+    $resolvedFilePath = $this->resolveExcelFormulas($request->file('file')->getRealPath());
+
     $import = new DynamicTemplateImport(
             $assessment->id,
             $assessment->licensee_id,
@@ -234,7 +238,7 @@ public function upload(Request $request)
         );
 
 
-    Excel::import($import,$request->file('file'));
+    Excel::import($import, $resolvedFilePath);
     /** ------------------------------------------------------------------
      * 3. Fetch preview (first 50 rows of all sheets)
      * ------------------------------------------------------------------*/
@@ -254,6 +258,78 @@ public function upload(Request $request)
     }catch(\Exception $e){
         return back()->with('error', 'Import failed: ' . $e->getMessage());
     }
+}
+
+/**
+ * Provided by Mhd AiCrunch
+ * Pre-process an xlsx file by resolving every formula cell to its plain
+ * value BEFORE Maatwebsite / PhpSpreadsheet tries to re-evaluate it.
+ *
+ * Strategy per formula cell:
+ *   1. Try PhpSpreadsheet's own getCalculatedValue().
+ *   2. If that throws or returns an Excel error string (#REF!, #VALUE! …),
+ *      fall back to getOldCalculatedValue() — the value Excel itself cached
+ *      in the file when it was last saved (i.e. the value the user saw).
+ *   3. Write the resolved scalar value back to the cell (removing the formula).
+ *
+ * Returns the path of a temporary xlsx file with no remaining formulas.
+ */
+private function resolveExcelFormulas(string $sourcePath): string
+{
+    $excelErrors = ['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A', '#GETTING_DATA'];
+
+    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($sourcePath);
+
+    foreach ($spreadsheet->getAllSheets() as $sheet) {
+        foreach ($sheet->getCoordinates(false) as $coord) {
+            $cell = $sheet->getCell($coord);
+
+            // Only touch formula cells
+            if ($cell->getDataType() !== \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA) {
+                continue;
+            }
+
+            // 1. Try fresh calculation
+            $value = null;
+            try {
+                $value = $cell->getCalculatedValue();
+            } catch (\Throwable $e) {
+                $value = null;
+            }
+
+            // 2. If PhpSpreadsheet returned an error / null, use Excel's cached result
+            if ($value === null || (is_string($value) && in_array(strtoupper(trim($value)), $excelErrors))) {
+                $cached = $cell->getOldCalculatedValue();
+                if ($cached !== null && !(is_string($cached) && in_array(strtoupper(trim($cached)), $excelErrors))) {
+                    $value = $cached;
+                } else {
+                    $value = null;
+                }
+            }
+
+            // 3. Replace formula with the resolved scalar value
+            if ($value === null) {
+                $cell->setValueExplicit('', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            } elseif (is_bool($value)) {
+                $cell->setValueExplicit($value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_BOOL);
+            } elseif (is_numeric($value)) {
+                $cell->setValueExplicit($value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC);
+            } else {
+                $cell->setValueExplicit((string) $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+        }
+    }
+
+    // Save the formula-free workbook to a temp file
+    $tempPath = sys_get_temp_dir() . '/excel_resolved_' . uniqid() . '.xlsx';
+    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+    $writer->save($tempPath);
+
+    // Free memory
+    $spreadsheet->disconnectWorksheets();
+    unset($spreadsheet);
+
+    return $tempPath;
 }
 
 
@@ -509,9 +585,9 @@ public function importData(Request $request, Assessment $assessment)
             if($key->mandatory==3){
                 $rules[$key->short_code] = 'nullable';
             }else{
-                $rules[$key->short_code] = $key->mandatory ? 'required' : 'nullable';    
+                $rules[$key->short_code] = $key->mandatory ? 'required' : 'nullable';
             }
-            
+
         }
 
         $validated = $request->validate($rules);
@@ -526,7 +602,7 @@ public function importData(Request $request, Assessment $assessment)
                         'template_key_value' => $validated[$key->short_code],
                         'type' => $key->type,
                         'entry_counter' => 1,
-                    ]);    
+                    ]);
                 }
             }
         });
@@ -579,7 +655,7 @@ public function storeManualSheet(Request $request)
     $sheet = LicenseeTemplateSheet::with('keys')->findOrFail($request->sheet_id);
     $sheetId = $request->sheet_id;
     $sheetData = $request->input("sheets.$sheetId");
-    
+
     if (!$sheetData) {
         return back()->withErrors(['msg' => 'No data found for this sheet.']);
     }
@@ -659,7 +735,7 @@ public function storeManualSheet(Request $request)
                     $maxAutoCounter++;
                 }else{
                     $maxAutoCounter = 1;
-                }    
+                }
                 AssessmentMasterData::create([
                     'licensee_id' => $assessment->licensee_id,
                     'assessment_id' => $assessment->id,
@@ -668,7 +744,7 @@ public function storeManualSheet(Request $request)
                     'template_key_value' => $maxAutoCounter,
                     'type' => $key->type,
                     'entry_counter' => $maxEntryCounter,
-                ]);    
+                ]);
             }else{
                 AssessmentMasterData::create([
                     'licensee_id' => $assessment->licensee_id,
@@ -678,11 +754,11 @@ public function storeManualSheet(Request $request)
                     'template_key_value' => $value,
                     'type' => $key->type,
                     'entry_counter' => $maxEntryCounter,
-                ]);    
+                ]);
             }
 
-            
-            
+
+
         }
     }
     return back()->with('success', 'Sheet data saved successfully.');
@@ -786,12 +862,12 @@ public function exportMasterData($assessmentId)
         return Excel::download(
             new AssessmentMasterMultiSheetExport($assessmentId),
             $fileName
-        );    
+        );
     }
     return false;
-    
+
 }
 
 
-   
+
 }
