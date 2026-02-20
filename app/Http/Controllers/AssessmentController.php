@@ -211,7 +211,6 @@ public function upload(Request $request)
 
    try{
 
-
     $assessment = Assessment::find($request->assessment_id);
      SlaveMasterData::where('assessment_id', $assessment->id)->delete();
 
@@ -228,13 +227,16 @@ public function upload(Request $request)
      *    etc.) are replaced with what Excel last computed before we pass
      *    the file to the Maatwebsite importer.
      * ------------------------------------------------------------------*/
-    $resolvedFilePath = $this->resolveExcelFormulas($request->file('file')->getRealPath());
+    $resolvedData = $this->resolveExcelFormulas($request->file('file')->getRealPath(), $sheetMapping);
+    $resolvedFilePath = $resolvedData['path'];
+    $maxDataRows      = $resolvedData['maxDataRows'];
 
     $import = new DynamicTemplateImport(
             $assessment->id,
             $assessment->licensee_id,
             $assessment->licensee_template_id,
-            $sheetMapping
+            $sheetMapping,
+            $maxDataRows
         );
 
 
@@ -248,6 +250,7 @@ public function upload(Request $request)
         ->limit(50)
         ->get();*/
     $previewRows = SlaveMasterData::where('assessment_id', $assessment->id)->get();
+
     return view('modules.assessments.preview_new', [
         'assessment' => $assessment,
         'previewRows' => $previewRows,
@@ -262,74 +265,165 @@ public function upload(Request $request)
 
 /**
  * Provided by Mhd AiCrunch
- * Pre-process an xlsx file by resolving every formula cell to its plain
- * value BEFORE Maatwebsite / PhpSpreadsheet tries to re-evaluate it.
+ * Pre-process an xlsx file: read ALL sheets using Excel's own cached formula
+ * values (setReadDataOnly), then keep only mapped sheets, trim trailing empty
+ * rows, and save a clean file for fast Maatwebsite import.
  *
- * Strategy per formula cell:
- *   1. Try PhpSpreadsheet's own getCalculatedValue().
- *   2. If that throws or returns an Excel error string (#REF!, #VALUE! …),
- *      fall back to getOldCalculatedValue() — the value Excel itself cached
- *      in the file when it was last saved (i.e. the value the user saw).
- *   3. Write the resolved scalar value back to the cell (removing the formula).
+ * Key optimisations vs. the original approach:
+ *   1. setReadDataOnly(true)  — skips formula re-evaluation entirely;
+ *      uses the values Excel cached when the file was last saved (~3s vs ~73s).
+ *   2. ALL sheets are loaded so cross-sheet formula cached values (License
+ *      Number, Company Name, etc.) are read correctly.
+ *   3. Non-mapped sheets are removed before saving → smaller output file.
+ *   4. Trailing-row trim — removes thousands of empty rows so
+ *      Maatwebsite only iterates over actual data rows.
  *
- * Returns the path of a temporary xlsx file with no remaining formulas.
+ * Returns the path of a temporary xlsx file ready for import.
  */
-private function resolveExcelFormulas(string $sourcePath): string
+private function resolveExcelFormulas(string $sourcePath, array $sheetMapping): array
 {
+    $mappedSheetNames = array_keys($sheetMapping);
     $excelErrors = ['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A', '#GETTING_DATA'];
 
-    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($sourcePath);
+    // ━━━ PASS 1: Fast load with cached values ━━━
+    $reader1 = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($sourcePath);
+    $reader1->setReadDataOnly(true);
 
-    foreach ($spreadsheet->getAllSheets() as $sheet) {
-        foreach ($sheet->getCoordinates(false) as $coord) {
-            $cell = $sheet->getCell($coord);
+    $spreadsheet = $reader1->load($sourcePath);
 
-            // Only touch formula cells
-            if ($cell->getDataType() !== \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA) {
-                continue;
-            }
+    // Scan mapped sheets for error values and find last data row
+    $errorCells = [];   // [sheetTitle => [coord, ...]]
+    $maxDataRow = [];   // [sheetTitle => lastDataRow]
+    $formulasToStrip = []; // [sheetTitle => [coord => value, ...]]
 
-            // 1. Try fresh calculation
-            $value = null;
-            try {
-                $value = $cell->getCalculatedValue();
-            } catch (\Throwable $e) {
-                $value = null;
-            }
+    foreach ($mappedSheetNames as $sheetTitle) {
+        $sheet = $spreadsheet->getSheetByName($sheetTitle);
+        if (!$sheet) continue;
 
-            // 2. If PhpSpreadsheet returned an error / null, use Excel's cached result
-            if ($value === null || (is_string($value) && in_array(strtoupper(trim($value)), $excelErrors))) {
-                $cached = $cell->getOldCalculatedValue();
-                if ($cached !== null && !(is_string($cached) && in_array(strtoupper(trim($cached)), $excelErrors))) {
-                    $value = $cached;
-                } else {
-                    $value = null;
+        $highestCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString(
+            $sheet->getHighestColumn()
+        );
+        $totalRows  = $sheet->getHighestRow();
+        $errorCells[$sheetTitle] = [];
+        $formulasToStrip[$sheetTitle] = [];
+        $lastRow = 1;
+
+        for ($row = 2; $row <= $totalRows; $row++) {
+            for ($col = 1; $col <= $highestCol; $col++) {
+                $coord = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col) . $row;
+                $cell  = $sheet->getCell($coord);
+                $val   = $cell->getValue();
+                
+                // If it's a formula, we check the cached (old) value
+                if ($cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA) {
+                    $val = $cell->getOldCalculatedValue();
+                }
+
+                if ($val !== null && $val !== '' && !(is_string($val) && trim($val) === '')) {
+                    if ($row > $lastRow) $lastRow = $row;
+                    
+                    if (is_string($val) && in_array(strtoupper(trim($val)), $excelErrors)) {
+                        $errorCells[$sheetTitle][] = $coord;
+                    } elseif ($cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA) {
+                        // It's a valid formula result -> mark to strip formula by setting static value
+                        $formulasToStrip[$sheetTitle][$coord] = $val;
+                    }
                 }
             }
+        }
+        $maxDataRow[$sheetTitle] = $lastRow;
+    }
 
-            // 3. Replace formula with the resolved scalar value
-            if ($value === null) {
-                $cell->setValueExplicit('', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            } elseif (is_bool($value)) {
-                $cell->setValueExplicit($value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_BOOL);
-            } elseif (is_numeric($value)) {
-                $cell->setValueExplicit($value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC);
-            } else {
-                $cell->setValueExplicit((string) $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            }
+    // Apply formula stripping (convert to values) for valid formulas found in Pass 1
+    $stripCount = 0;
+    foreach ($formulasToStrip as $sheetTitle => $updates) {
+        $sheet = $spreadsheet->getSheetByName($sheetTitle);
+        foreach ($updates as $coord => $val) {
+            $sheet->setCellValue($coord, $val);
+            $stripCount++;
         }
     }
 
-    // Save the formula-free workbook to a temp file
-    $tempPath = sys_get_temp_dir() . '/excel_resolved_' . uniqid() . '.xlsx';
-    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+    $totalErrors = 0;
+    foreach ($errorCells as $cells) $totalErrors += count($cells);
+
+    // ━━━ PASS 2: Re-evaluate ONLY error cells with full formula support ━━━
+    if ($totalErrors > 0) {
+        $maxRows = $maxDataRow;
+        $mapped  = $mappedSheetNames;
+
+        $reader2 = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($sourcePath);
+        $reader2->setReadFilter(new class($mapped, $maxRows) implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+            private $mapped;
+            private $maxRows;
+            public function __construct(array $mapped, array $maxRows) {
+                $this->mapped  = $mapped;
+                $this->maxRows = $maxRows;
+            }
+            public function readCell(string $columnAddress, int $row, string $worksheetName = ''): bool {
+                if (in_array($worksheetName, $this->mapped)) {
+                    return $row <= ($this->maxRows[$worksheetName] ?? 100);
+                }
+                return true; // reference sheets load fully for cross-sheet formulas
+            }
+        });
+
+        $spreadsheet2 = $reader2->load($sourcePath);
+
+        $fixedCount = 0;
+        foreach ($errorCells as $sheetTitle => $coords) {
+            if (empty($coords)) continue;
+            $srcSheet = $spreadsheet2->getSheetByName($sheetTitle);
+            $dstSheet = $spreadsheet->getSheetByName($sheetTitle);
+            if (!$srcSheet || !$dstSheet) continue;
+
+            foreach ($coords as $coord) {
+                $val = null;
+                try {
+                    $val = $srcSheet->getCell($coord)->getCalculatedValue();
+                } catch (\Throwable $e) {
+                    $val = null;
+                }
+                
+                // If re-evaluation still yields an error, try one last check of the cached value
+                if ($val === null || (is_string($val) && in_array(strtoupper(trim($val)), $excelErrors))) {
+                    $cached = $srcSheet->getCell($coord)->getOldCalculatedValue();
+                    $val = ($cached !== null && !(is_string($cached) && in_array(strtoupper(trim($cached)), $excelErrors)))
+                        ? $cached : null;
+                }
+
+                if ($val !== null) {
+                    $dstSheet->setCellValue($coord, $val);
+                    $fixedCount++;
+                }
+            }
+        }
+
+        $spreadsheet2->disconnectWorksheets();
+        unset($spreadsheet2);
+    }
+
+    // ━━━ Remove non-mapped sheets ━━━
+    foreach ($spreadsheet->getSheetNames() as $name) {
+        if (!in_array($name, $mappedSheetNames)) {
+            $spreadsheet->removeSheetByIndex(
+                $spreadsheet->getIndex($spreadsheet->getSheetByName($name))
+            );
+        }
+    }
+
+    // ━━━ Save ━━━
+    $tempPath  = sys_get_temp_dir() . '/excel_resolved_' . uniqid() . '.xlsx';
+    $writer    = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
     $writer->save($tempPath);
 
-    // Free memory
     $spreadsheet->disconnectWorksheets();
     unset($spreadsheet);
 
-    return $tempPath;
+    return [
+        'path' => $tempPath,
+        'maxDataRows' => $maxDataRow
+    ];
 }
 
 

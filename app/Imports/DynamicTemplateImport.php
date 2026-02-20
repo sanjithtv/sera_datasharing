@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Validator;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 use Maatwebsite\Excel\Concerns\WithCalculatedFormulas;
 use Maatwebsite\Excel\Concerns\ToCollection;
+use Maatwebsite\Excel\Concerns\WithReadFilter;
+use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use PhpOffice\PhpSpreadsheet\Cell\Cell;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
@@ -19,23 +21,43 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 
 
-class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormulas
+class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormulas, WithReadFilter
 {
     protected $assessmentId;
     protected $licenseeId;
     protected $licenseeTemplateId;
     protected $sheetMapping;   // ['sheet_name' => sheet_id]
+    protected $maxDataRows;    // ['sheet_name' => last_row_index]
     protected $entryCounter = 1;
     public $canProceed = true;
     public $errorsPerSheet = [];
     public $namePerSheet = [];
 
-    public function __construct($assessmentId, $licenseeId,$licenseeTemplateId, $sheetMapping)
+    public function __construct($assessmentId, $licenseeId,$licenseeTemplateId, $sheetMapping, $maxDataRows = [])
     {
         $this->assessmentId = $assessmentId;
         $this->licenseeId   = $licenseeId;
         $this->licenseeTemplateId = $licenseeTemplateId;
         $this->sheetMapping = $sheetMapping;
+        $this->maxDataRows  = $maxDataRows;
+    }
+
+    /**
+     * ✅ Optimized Read Filter
+     * Prevents reading thousands of trailing empty rows at the reader level.
+     */
+    public function readFilter(): IReadFilter
+    {
+        return new class($this->maxDataRows) implements IReadFilter {
+            protected $maxDataRows;
+            public function __construct($maxDataRows) {
+                $this->maxDataRows = $maxDataRows;
+            }
+            public function readCell($columnAddress, $row, $worksheetName = ''): bool {
+                // Keep header (row 1) and all rows up to detected last data row
+                return $row <= ($this->maxDataRows[$worksheetName] ?? 500);
+            }
+        };
     }
 
     public function sheets(): array
@@ -43,10 +65,6 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
         $imports = [];
 
         foreach ($this->sheetMapping as $sheetName => $sheetId) {
-
-            // ✅ Skip the Master sheet — it is not part of the data template
-            // and not all uploaded files contain it. Requesting it causes
-            // "sheet name out of bounds" from PhpSpreadsheet.
             if ($sheetName === 'Master') {
                 continue;
             }
@@ -57,10 +75,8 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
             // ✅ Load template keys dynamically (column-wise)
             $keys = LicenseeTemplateKey::where('licensee_id', $this->licenseeId)
                 ->where('sheet_id', $sheetId)
-                ->orderBy('id') // column order = DB order
+                ->orderBy('id')
                 ->get();
-
-            //if ($keys->isEmpty()) continue;
 
             $parent = $this;
             $imports[$sheetName] = new class(
@@ -97,6 +113,8 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
 
                 public function collection(Collection $rows)
                 {
+                    $rowsProcessed = 0;
+
                     // ✅ HEADER CAPTURE (row 0)
                     $this->headers = collect($rows[0] ?? [])
     ->map(function ($value) {
@@ -171,6 +189,7 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                         }
 
                         if($value_t!=''){
+                            $rowsProcessed++;
                             $rawRow = [];
 
                             foreach ($row as $cell) {
@@ -381,7 +400,8 @@ class DynamicTemplateImport implements WithMultipleSheets, WithCalculatedFormula
                                     SlaveMasterData::insert($this->buffer);
                                     $this->buffer = [];
                                 }
-                            }
+                        } else {
+                        }
 
                         }
                     }
