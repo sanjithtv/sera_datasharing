@@ -113,6 +113,9 @@ Route::middleware(['auth'])->group(function () {
 
         Route::post('/{assessment}/import-data', 'importData')->name('importData');
         Route::get('/{assessment}/export-master-data', 'exportMasterData')->name('export.master');
+        Route::get('/{assessment}/download-errors', 'downloadErrors')->name('download.errors');
+        Route::get('/{assessment}/download-step1-errors', 'downloadStep1Errors')->name('download.step1.errors');
+        Route::get('/{assessment}/review', 'reviewParsed')->name('review');
 
     });
 
@@ -138,5 +141,8 @@ Route::get('/', [App\Http\Controllers\HomeController::class, 'dashboard'])->name
 //Update User Details
 Route::post('/update-profile/{id}', [App\Http\Controllers\HomeController::class, 'updateProfile'])->name('updateProfile');
 Route::post('/update-password/{id}', [App\Http\Controllers\HomeController::class, 'updatePassword'])->name('updatePassword');
+
+// Progress Tracking
+Route::get('/assessments/{assessment}/progress', [App\Http\Controllers\AssessmentController::class, 'getProgress'])->name('assessments.progress');
 
 //Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])->name('index');

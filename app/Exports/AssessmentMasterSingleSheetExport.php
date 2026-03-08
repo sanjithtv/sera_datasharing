@@ -4,79 +4,81 @@ namespace App\Exports;
 
 use App\Models\AssessmentMasterData;
 use App\Models\LicenseeTemplateSheet;
-use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Facades\DB;
 
-class AssessmentMasterSingleSheetExport implements FromArray, WithTitle
+class AssessmentMasterSingleSheetExport implements FromCollection, WithTitle, WithHeadings
 {
 
     protected $assessmentId;
     protected $sheet;
+    protected $keyMap;
 
     public function __construct($assessmentId, $sheet)
     {
         $this->assessmentId = $assessmentId;
         $this->sheet = $sheet;
+        
+        // Pre-build key map
+        $this->keyMap = [];
+        foreach ($this->sheet->keys as $index => $key) {
+            $this->keyMap[$key->id] = $index;
+        }
     }
 
-    public function array(): array
+    /**
+     * @return array
+     */
+    public function headings(): array
     {
-        // Fetch master data for this sheet
-        $rows = AssessmentMasterData::where('assessment_id', $this->assessmentId)
-            ->where('template_sheet_id', $this->sheet->id)
-            ->orderBy('entry_counter')
-            ->get();
-
-        if ($rows->isEmpty()) {
-            return [];
-        }
-
-        $exportData = [];
-
-        /*
-        |--------------------------------------------------------------------------
-        | HEADER ROW  (Same as Blade → $sheet->keys.short_code)
-        |--------------------------------------------------------------------------
-        */
         $headers = [];
-
         foreach ($this->sheet->keys as $key) {
             $headers[] = $key->short_code;
         }
+        return $headers;
+    }
 
-        $exportData[] = $headers;
+    /**
+     * @return LazyCollection
+     */
+    public function collection()
+    {
+        return LazyCollection::make(function () {
+            $query = DB::table('sr_licensee_assessment_master_data')
+                ->where('assessment_id', $this->assessmentId)
+                ->where('template_sheet_id', $this->sheet->id)
+                ->orderBy('entry_counter');
 
-        /*
-        |--------------------------------------------------------------------------
-        | GROUP BY ENTRY COUNTER
-        |--------------------------------------------------------------------------
-        */
-        $grouped = $rows->groupBy('entry_counter');
+            $currentRowIndex = -1;
+            $currentRow = [];
+            $columnCount = count($this->keyMap);
 
-        foreach ($grouped as $entryCounter => $entries) {
-            foreach ($entries as $entry) {
-                $row = [];
-                $rowData [$entry->template_key_id]= $entry->template_key_value;
-                // If JSON stored
-                if (is_string($rowData)) {
-                    $rowData = json_decode($rowData, true);
+            foreach ($query->cursor() as $entry) {
+                if ($entry->entry_counter !== $currentRowIndex) {
+                    if ($currentRowIndex !== -1) {
+                        yield $currentRow;
+                    }
+                    $currentRowIndex = $entry->entry_counter;
+                    $currentRow = array_fill(0, $columnCount, null);
                 }
 
-                foreach ($this->sheet->keys as $key) {
-                    $row[] = $rowData[$key->id] ?? null;
+                if (isset($this->keyMap[$entry->template_key_id])) {
+                    $idx = $this->keyMap[$entry->template_key_id];
+                    $currentRow[$idx] = $entry->template_key_value;
                 }
-
-                
             }
-            $exportData[] = $row;
-        }
-        return $exportData;
+
+            if ($currentRowIndex !== -1) {
+                yield $currentRow;
+            }
+        });
     }
 
     public function title(): string
     {
         return $this->sheet->sheet_name ?? 'Sheet';
     }
-
-  
 }

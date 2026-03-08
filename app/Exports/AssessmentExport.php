@@ -30,7 +30,7 @@ class AssessmentExport implements FromCollection,WithHeadings, WithMapping
             $assessment->licenseeTemplate->version,
             $assessment->assessment_date,
             ucfirst($assessment->status),
-            $assessment->masterData->unique(fn ($row) => $row->entry_counter . '-' . $row->template_sheet_id)->count(),
+            $assessment->imported_rows,
         ];
     }
 

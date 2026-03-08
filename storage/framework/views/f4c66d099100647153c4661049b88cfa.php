@@ -13,15 +13,16 @@ App::setLocale(session('lang'));
 <?php $__env->startSection('content'); ?>
     <?php $__env->startComponent('components.breadcrumb'); ?>
         <?php $__env->slot('li_1'); ?>
-            ADMINISTRATION
+            <?php echo app('translator')->get('translation.forms'); ?>
         <?php $__env->endSlot(); ?>
         <?php $__env->slot('title'); ?>
-            <?php echo app('translator')->get('translation.forms'); ?>
+            <?php echo app('translator')->get('translation.edit'); ?>
         <?php $__env->endSlot(); ?>
 <?php echo $__env->renderComponent(); ?>
  <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18"><?php echo app('translator')->get('translation.forms'); ?></h4>
             <div class="card" id="companyList">
                 
                 <div class="card-body">
@@ -62,6 +63,14 @@ App::setLocale(session('lang'));
                 </select>
             </div>
             <div class="col-md-4 mb-3">
+                <label><?php echo app('translator')->get('translation.classification'); ?></label>
+                <select name="classification_id" class="form-select">
+                    <?php $__currentLoopData = $classifications; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $id => $name): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                        <option value="<?php echo e($id); ?>" <?php echo e($licenseeTemplate->classification_id == $id ? 'selected' : ''); ?>><?php echo e($name); ?></option>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                </select>
+            </div>
+            <div class="col-md-2 mb-3">
                 <label><?php echo app('translator')->get('translation.sheetname'); ?></label>
                 <input type="text" name="sheet_name" value="<?php echo e($licenseeTemplate->sheet_name); ?>" class="form-control">
             </div>
@@ -184,8 +193,9 @@ App::setLocale(session('lang'));
 
                                     <td>
                                         <select name="mandatory" class="form-select">
-                                            <option value="1" <?php echo e($key->mandatory ? 'selected' : ''); ?>>Yes</option>
+                                            <option value="1" <?php echo e($key->mandatory == '1' ? 'selected' : ''); ?>>Yes</option>
                                             <option value="0" <?php echo e(!$key->mandatory ? 'selected' : ''); ?>>No</option>
+                                            <option value="3" <?php echo e($key->mandatory == '3' ? 'selected' : ''); ?>>Auto</option>
                                         </select>
                                     </td>
 

@@ -29,7 +29,7 @@
                                     <div class="p-lg-5 p-4">
                                         <div class="mb-4">
                                                 <a href="index" class="d-inline-block auth-logo">
-                                                    <img src="<?php echo e(URL::asset('build/images/sera_logo.png')); ?>" alt="" height="auto">
+                                                    <img src="<?php echo e(URL::asset('../storage/app/public/'.$siteConfig->app_logo)); ?>" alt="" height="auto">
                                                 </a>
                                             </div>
                                         <div>
@@ -49,7 +49,7 @@ $message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>"
-                                                value="<?php echo e(old('email', 'admin@sera.sa')); ?>" id="username"
+                                                value="" id="username"
                                                 name="email" placeholder="Enter username">
                                             <?php $__errorArgs = ['email'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
@@ -81,7 +81,7 @@ if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>"
                                                     name="password" placeholder="Enter password" id="password-input"
-                                                    value="12345678">
+                                                    value="">
                                                 <button
                                                     class="btn btn-link position-absolute end-0 top-0 text-decoration-none text-muted password-addon"
                                                     type="button" id="password-addon"><i
@@ -147,8 +147,7 @@ unset($__errorArgs, $__bag); ?>
                             <p class="mb-0 text-muted">&copy;
                                 <script>
                                     document.write(new Date().getFullYear())
-                                </script> SERA. Crafted with <i class="mdi mdi-heart text-danger"></i> by
-                                Kaizen
+                                </script> SERA. Developed by Kaizen
                             </p>
                         </div>
                     </div>

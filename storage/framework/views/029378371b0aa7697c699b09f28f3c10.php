@@ -8,7 +8,7 @@
                 <img src="<?php echo e(URL::asset('build/images/logo-sm.png')); ?>" alt="" height="22">
             </span>
             <span class="logo-lg">
-                <img src="<?php echo e(URL::asset('build/images/sera_logo.png')); ?>" alt="" height="auto">
+                <img src="<?php echo e(URL::asset('../storage/app/public/'.$siteConfig->app_logo)); ?>" alt="" height="auto">
             </span>
         </a>
         <!-- Light Logo-->

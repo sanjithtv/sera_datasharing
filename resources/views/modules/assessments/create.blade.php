@@ -64,24 +64,24 @@ App::setLocale(session('lang'));
                             <div class="mb-3 col-xxl-6 col-md-6">
                                 <label>@lang('translation.status')</label>
                                 <select name="status" class="form-select">
-                                    <option value="draft">Draft</option>
-                                    <option value="active">Active</option>
+                                    <option value="draft">{{ __('Draft') }}</option>
+                                    <option value="active">{{ __('Active') }}</option>
                                 </select>
                             </div>
 
                             <div class="mb-3 col-xxl-6 col-md-6">
                                 <label>@lang('translation.data_entry_mode')</label>
                                 <select name="entry_mode" class="form-select" required>
-                                    <option value="">Select</option>
-                                    <option value="excel">Excel Upload</option>
-                                    <option value="manual">Manual Entry</option>
+                                    <option value="">{{ __('Select') }}</option>
+                                    <option value="excel">{{ __('Excel Upload') }}</option>
+                                    <option value="manual">{{ __('Manual Entry') }}</option>
                                 </select>
                             </div>
                         </div>
 
                         <div class="text-end">
-                            <button type="submit" class="btn btn-success">Continue</button>
-                            <a href="{{ route('assessments.index') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-success">{{ __('Continue') }}</button>
+                            <a href="{{ route('assessments.index') }}" class="btn btn-secondary">{{ __('Cancel') }}</a>
                         </div>
                         </form>
                         

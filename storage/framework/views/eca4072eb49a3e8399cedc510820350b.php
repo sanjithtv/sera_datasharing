@@ -13,15 +13,16 @@ App::setLocale(session('lang'));
 <?php $__env->startSection('content'); ?>
     <?php $__env->startComponent('components.breadcrumb'); ?>
         <?php $__env->slot('li_1'); ?>
-            ADMINISTRATION
+            <?php echo app('translator')->get('translation.forms'); ?>
         <?php $__env->endSlot(); ?>
         <?php $__env->slot('title'); ?>
-            <?php echo app('translator')->get('translation.forms'); ?>
+            <?php echo app('translator')->get('translation.create'); ?>
         <?php $__env->endSlot(); ?>
     <?php echo $__env->renderComponent(); ?>
     <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18"><?php echo app('translator')->get('translation.forms'); ?></h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
@@ -90,6 +91,18 @@ App::setLocale(session('lang'));
                 <div class="col-md-6">
                     <label class="form-label"><?php echo app('translator')->get('translation.sheetname'); ?> <span class="text-danger">*</span></label>
                     <input type="text" name="sheet_name" value="<?php echo e(old('sheet_name')); ?>" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"><?php echo app('translator')->get('translation.classification'); ?> <span class="text-danger">*</span></label>
+                    <select name="classification_id" class="form-select" required>
+                        <option value="">Select Classification</option>
+                        <?php $__currentLoopData = $classifications; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $id => $name): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                            <option value="<?php echo e($id); ?>" <?php echo e(old('classification_id') == $id ? 'selected' : ''); ?>>
+                                <?php echo e($name); ?>
+
+                            </option>
+                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                    </select>
                 </div>
 
                 <div class="col-md-6">

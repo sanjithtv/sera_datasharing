@@ -16,21 +16,22 @@ App::setLocale(session('lang'));
 <?php $__env->startSection('content'); ?>
     <?php $__env->startComponent('components.breadcrumb'); ?>
         <?php $__env->slot('li_1'); ?>
-            ADMINISTRATION
+            <?php echo app('translator')->get('translation.forms'); ?>
         <?php $__env->endSlot(); ?>
         <?php $__env->slot('title'); ?>
-            <?php echo app('translator')->get('translation.forms'); ?>
+            <?php echo app('translator')->get('translation.list'); ?>
         <?php $__env->endSlot(); ?>
     <?php echo $__env->renderComponent(); ?>
     <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18"><?php echo app('translator')->get('translation.forms'); ?></h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="Search for <?php echo app('translator')->get('translation.licensee'); ?>...">
+                                <input type="text" class="form-control search" id="searchText" placeholder="<?php echo app('translator')->get('translation.search'); ?>...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -41,7 +42,7 @@ App::setLocale(session('lang'));
                                 <button type="button" id="dropdownMenuLink1" data-bs-toggle="dropdown" aria-expanded="false"
                                     class="btn btn-soft-info"><i class="ri-more-2-fill"></i></button>
                                 <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink1">
-                                    <li><a class="dropdown-item" href="#">Export as Excel</a></li>
+                                    <li><a class="dropdown-item" href="<?php echo e(route('forms.licensee_templates.export.excel')); ?>">Export as Excel</a></li>
                                 </ul>  
                             </div>
                         </div>
@@ -55,12 +56,13 @@ App::setLocale(session('lang'));
                                     <tr>
                                         <th class="sort" data-sort="name" scope="col">ID</th>
                                         
-                                        <th><?php echo app('translator')->get('translation.licensee'); ?></th>
-                                        <th><?php echo app('translator')->get('translation.subfolder'); ?></th>
-                                        <th><?php echo app('translator')->get('translation.version'); ?></th>
-                                        <th><?php echo app('translator')->get('translation.department'); ?></th>
+                                        <th class="sort" data-sort="licensee" scope="col"><?php echo app('translator')->get('translation.licensee'); ?></th>
+                                        <th class="sort" data-sort="classification" scope="col"><?php echo app('translator')->get('translation.classification'); ?></th>
+                                        <th class="sort" data-sort="subfolder" scope="col"><?php echo app('translator')->get('translation.subfolder'); ?></th>
+                                        <th class="sort" data-sort="version" scope="col"><?php echo app('translator')->get('translation.version'); ?></th>
+                                        <th class="sort" data-sort="departmentname" scope="col"><?php echo app('translator')->get('translation.department'); ?></th>
                                         <th><?php echo app('translator')->get('translation.keys'); ?></th>
-                                        <th><?php echo app('translator')->get('translation.status'); ?></th>
+                                        <th class="sort" data-sort="status" scope="col"><?php echo app('translator')->get('translation.status'); ?></th>
                                         <th><?php echo app('translator')->get('translation.action'); ?></th>
                                     </tr>
                                 </thead>
@@ -71,32 +73,29 @@ App::setLocale(session('lang'));
                                                 class="fw-medium link-primary"><?php echo e($template->code); ?></a></td>
                                         <td>
                                             <div class="d-flex align-items-center">
-                                                <div class="flex-shrink-0">
-                                                    <img src="<?php echo e(URL::asset('build/images/brands/dribbble.png')); ?>"
-                                                        alt="" class="avatar-xxs rounded-circle image_src object-fit-cover">
-                                                </div>
                                                 <div class="flex-grow-1 ms-2 name"><?php echo e($template->id); ?>
 
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="owner"><?php echo e($lang === 'ar' ? ($template->licensee->name_ar ?? '—') : ($template->licensee->name_en ?? '—')); ?></td>
-                                        <td><?php echo e($lang === 'ar' ? ($template->subfolder->name_ar ?? '—') : ($template->subfolder->name_en ?? '—')); ?> </td>
-                                        <td><?php echo e($template->version); ?></td>
-                                        <td><?php echo e($lang === 'ar' ? ($template->department->name_ar ?? '—') : ($template->department->name_en ?? '—')); ?></td>
+                                        <td class="licensee"><?php echo e($lang === 'ar' ? ($template->licensee->name_ar ?? '—') : ($template->licensee->name_en ?? '—')); ?></td>
+                                        <td class="classification"><?php echo e($lang === 'ar' ? ($template->classification->name_ar ?? '—') : ($template->classification->name_en ?? '—')); ?></td>
+                                        <td class="subfolder"><?php echo e($lang === 'ar' ? ($template->subfolder->name_ar ?? '—') : ($template->subfolder->name_en ?? '—')); ?> </td>
+                                        <td class="version"><?php echo e(strtolower($template->version)); ?></td>
+                                        <td class="departmentname"><?php echo e($lang === 'ar' ? ($template->department->name_ar ?? '—') : ($template->department->name_en ?? '—')); ?></td>
                                         <td><?php echo e($template->keys_count); ?></td>
-                                        <td>
+                                        <td class="status">
                                             <span class="badge <?php echo e($template->status === 'active' ? 'bg-success' : 'bg-secondary'); ?>">
                                                 <?php echo e(ucfirst($template->status)); ?>
 
                                             </span>
                                         </td>
                                         <td>
-                        <a href="<?php echo e(route('forms.licensee_templates.edit', $template->id)); ?>" class="edit-item-btn"><i
+                        <a href="<?php echo e(route('forms.licensee_templates.edit', $template->id)); ?>" class="edit-item-btn btn btn-sm btn-info"><i
                                                             class="ri-pencil-fill align-bottom text-muted"></i></a>
                         <form action="<?php echo e(route('forms.licensee_templates.destroy', $template->id)); ?>" method="POST" style="display:inline">
                             <?php echo csrf_field(); ?> <?php echo method_field('DELETE'); ?>
-                            <a class="remove-item-btn" onclick="return confirm('Delete this template?')"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
+                            <a class="remove-item-btn btn btn-sm btn-info" onclick="return confirm('Delete this template?')"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
                         </form>
                     </td>
 
@@ -178,8 +177,9 @@ App::setLocale(session('lang'));
 <script src="<?php echo e(URL::asset('build/libs/list.js/list.min.js')); ?>"></script>
 <script src="<?php echo e(URL::asset('build/libs/list.pagination.js/list.pagination.min.js')); ?>"></script>
 <script src="<?php echo e(URL::asset('build/libs/sweetalert2/sweetalert2.min.js')); ?>"></script>
-<script src="<?php echo e(URL::asset('build/js/pages/crm-companies.init.js')); ?>"></script>
+<script src="<?php echo e(URL::asset('build/js/pages/crm-licensee_templates.init.js')); ?>"></script>
 <script src="<?php echo e(URL::asset('build/js/app.js')); ?>"></script>
+
 <?php $__env->stopSection(); ?>
 
 

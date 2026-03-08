@@ -15,6 +15,12 @@ class Assessment extends Model
         'licensee_template_id',
         'assessment_date',
         'status',
+        'imported_rows',
+        'skipped_rows',
+        'total_rows',
+        'processed_rows',
+        'finalized_rows',
+        'processing_error',
     ];
 
     public function licensee()

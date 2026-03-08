@@ -31,9 +31,24 @@ App::setLocale(session('lang'));
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" id="searchText" placeholder="@lang('translation.search')...">
+                                <input type="text" class="form-control custom-search" id="searchText" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="classificationFilter">
+                                <option value="all">All Classifications</option>
+                                @foreach($classifications as $classification)
+                                    <option value="{{ $lang === 'ar' ? ($classification->name_ar ?? '—') : ($classification->name_en ?? '—') }}">{{ $lang === 'ar' ? ($classification->name_ar ?? '—') : ($classification->name_en ?? '—') }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="statusFilter">
+                                <option value="all">All Statuses</option>
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                            </select>
                         </div>
                         <div class="col-md-auto ms-auto">
                             <div class="d-flex align-items-center gap-2">

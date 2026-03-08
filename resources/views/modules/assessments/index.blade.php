@@ -36,7 +36,7 @@ App::setLocale(session('lang'));
                                 <button type="button" id="dropdownMenuLink1" data-bs-toggle="dropdown" aria-expanded="false"
                                     class="btn btn-soft-info"><i class="ri-more-2-fill"></i></button>
                                 <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink1">
-                                    <li><a class="dropdown-item" href="{{ route('assessments.export.excel') }}">Export as Excel</a></li>
+                                    <li><a class="dropdown-item" href="{{ route('assessments.export.excel') }}">{{ __('Export as Excel') }}</a></li>
                                 </ul>  
                             </div>
                         </div>
@@ -74,12 +74,12 @@ App::setLocale(session('lang'));
                                         <td>{{ $assessment->assessment_date }}</td>
                                         <td class="status">
                                             <span class="badge {{ $assessment->status === 'active' ? 'bg-success' : 'bg-secondary' }}">
-                                                {{ ucfirst($assessment->status) }}
+                                                {{ __(ucfirst($assessment->status)) }}
                                             </span>
                                         </td>
-                                        <td>{{ $assessment->masterData
-    ->unique(fn ($row) => $row->entry_counter . '-' . $row->template_sheet_id)
-    ->count() }}</td>
+                                        <td>
+                                            {{ $assessment->imported_rows }}
+                                        </td>
                                         <td>
                                             <a href="{{ route('assessments.show', $assessment->id) }}" class="btn btn-sm btn-info">
                                             <i class="ri-eye-fill"></i>
@@ -89,7 +89,7 @@ App::setLocale(session('lang'));
                                             @if(!in_array($assessment->status, ['completed','archived']))    
                                             <form action="{{ route('assessments.destroy', $assessment->id) }}" method="POST" style="display:inline" >
                                                 @csrf @method('DELETE')
-                                                <a href="#" class="remove-item-btn btn btn-sm btn-info" onclick="if(confirm('Delete this assessment?')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
+                                                <a href="#" class="remove-item-btn btn btn-sm btn-info" onclick="if(confirm('{{ __('Delete this assessment?') }}')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
                                             </form>
                                             @endif
                                         </td>
@@ -97,26 +97,27 @@ App::setLocale(session('lang'));
                                     @endforeach
                                 </tbody>
                             </table>
+                            <div class="mt-3">
+                                {{ $assessments->links() }}
+                            </div>
                             <div class="noresult" style="display: none">
                                 <div class="text-center">
                                     <lord-icon src="https://cdn.lordicon.com/msoeawqm.json" trigger="loop"
                                         colors="primary:#121331,secondary:#08a88a" style="width:75px;height:75px">
                                     </lord-icon>
-                                    <h5 class="mt-2">Sorry! No Result Found</h5>
-                                    <p class="text-muted mb-0">We've searched more than 150+ companies
-                                        We did not find any
-                                        companies for you search.</p>
+                                    <h5 class="mt-2">{{ __('No Result Found') }}</h5>
+                                    <p class="text-muted mb-0">{{ __('We\'ve searched more than 150+ companies We did not find any companies for you search.') }}</p>
                                 </div>
                             </div>
                         </div>
                         <div class="d-flex justify-content-end mt-3">
                             <div class="pagination-wrap hstack gap-2">
                                 <a class="page-item pagination-prev disabled" href="#">
-                                    Previous
+                                    {{ __('Previous') }}
                                 </a>
                                 <ul class="pagination listjs-pagination mb-0"></ul>
                                 <a class="page-item pagination-next" href="#">
-                                    Next
+                                    {{ __('Next') }}
                                 </a>
                             </div>
                         </div>
@@ -131,7 +132,7 @@ App::setLocale(session('lang'));
                 @csrf
                 @method('PUT')
                 <div class="modal-header">
-                    <h5 class="modal-title">Edit Assessment Status</h5>
+                    <h5 class="modal-title">{{ __('Edit Assessment Status') }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
 
@@ -139,17 +140,17 @@ App::setLocale(session('lang'));
                     <input type="hidden" id="editAssessmentId">
 
                     <div class="mb-3">
-                        <label for="editAssessmentStatus" class="form-label">Status</label>
+                        <label for="editAssessmentStatus" class="form-label">{{ __('Status') }}</label>
                         <select id="editAssessmentStatus" name="status" class="form-select" required>
-                            <option value="draft">Draft</option>
-                            <option value="active">Active</option>
+                            <option value="draft">{{ __('Draft') }}</option>
+                            <option value="active">{{ __('Active') }}</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-success">Save Changes</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">{{ __('Save Changes') }}</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
                 </div>
             </form>
         </div>
@@ -206,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 editModal.hide();
                 location.reload();
             } else {
-                alert(data.message || 'Update failed.');
+                alert(data.message || '{{ __('Update failed.') }}');
             }
         })
         .catch(err => console.error('Error:', err));

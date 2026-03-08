@@ -24,21 +24,25 @@ class AssessmentMasterMultiSheetExport implements WithMultipleSheets
     {
         $sheets = [];
 
-        
+        // Get unique sheet IDs for this assessment
         $sheetIds = AssessmentMasterData::where('assessment_id', $this->assessmentId)
-            ->pluck('template_sheet_id')
-            ->unique();
-        if($sheetIds){
-            foreach ($sheetIds as $sheetId) {
-                $templateSheets = LicenseeTemplateSheet::with('keys')->where('id',$sheetId)->get();
-                foreach ($templateSheets as $sheet) {
-                    $sheets[] = new AssessmentMasterSingleSheetExport(
-                        $this->assessmentId,
-                        $sheet
-                    );
-                }
-            }    
+            ->distinct()
+            ->pluck('template_sheet_id');
+
+        if ($sheetIds->count() > 0) {
+            // Eager load everything needed for the single sheet exports
+            $templateSheets = LicenseeTemplateSheet::with('keys')
+                ->whereIn('id', $sheetIds)
+                ->get();
+
+            foreach ($templateSheets as $sheet) {
+                $sheets[] = new AssessmentMasterSingleSheetExport(
+                    $this->assessmentId,
+                    $sheet
+                );
+            }
         }
+        
         return $sheets;
     }
 }

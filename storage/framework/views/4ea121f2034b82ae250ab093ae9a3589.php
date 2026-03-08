@@ -1,5 +1,9 @@
 <?php
-App::setLocale(session('lang'));
+if(session('lang')!=""){
+    App::setLocale(session('lang'));    
+}else{
+    App::setLocale(app()->getLocale());    
+}
 ?>
 <!doctype html >
 <?php if(session('lang')=="ar"): ?>
@@ -15,9 +19,18 @@ App::setLocale(session('lang'));
     <meta content="Themesbrand" name="author" />
     <!-- App favicon -->
     <link rel="shortcut icon" href="<?php echo e(URL::asset('build/images/favicon.ico')); ?>">
+    
+
     <?php echo $__env->make('layouts.head-css', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
 </head>
-
+<style>
+:root[data-topbar=dark]  {
+    --vz-header-bg: <?php echo e($siteConfig->theme_color ?? '#405189'); ?>;
+    --vz-topbar-user-bg: <?php echo e($siteConfig->theme_color ?? '#405189'); ?>;
+    --vz-header-item-bg: <?php echo e($siteConfig->theme_hover_color ?? '#1b3460'); ?>; 
+    --vz-header-item-sub-color:<?php echo e($siteConfig->theme_icon_color ?? '#b0442c'); ?>;
+}
+</style>
 <?php $__env->startSection('body'); ?>
     <?php echo $__env->make('layouts.body', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
 <?php echo $__env->yieldSection(); ?>

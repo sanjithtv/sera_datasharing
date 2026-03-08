@@ -126,6 +126,7 @@ class HomeController extends Controller
 
         $assessments = Assessment::with(['licenseeTemplate.subfolder'])
         ->orderByDesc('created_at')
+        ->limit(10)
         ->get();
 
 

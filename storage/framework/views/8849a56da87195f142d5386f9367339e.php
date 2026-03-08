@@ -13,15 +13,16 @@ App::setLocale(session('lang'));
 <?php $__env->startSection('content'); ?>
     <?php $__env->startComponent('components.breadcrumb'); ?>
         <?php $__env->slot('li_1'); ?>
-            SURVEYS
+            <?php echo app('translator')->get('translation.assessments'); ?>
         <?php $__env->endSlot(); ?>
         <?php $__env->slot('title'); ?>
-            <?php echo app('translator')->get('translation.assessments'); ?>
+            <?php echo app('translator')->get('translation.create'); ?>
         <?php $__env->endSlot(); ?>
 <?php echo $__env->renderComponent(); ?>
 <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18"><?php echo app('translator')->get('translation.assessments'); ?></h4>
             <div class="card" id="companyList">
                 <div class="card-header align-items-center d-flex">
                                     <h4 class="card-title mb-0 flex-grow-1"></h4>

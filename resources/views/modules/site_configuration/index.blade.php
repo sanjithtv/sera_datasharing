@@ -51,7 +51,7 @@ App::setLocale(session('lang'));
                     <div class="mb-3">
                         <label>Logo</label><br>
                         @if($settings['app_logo'])
-                            <img src="{{ asset('../storage/app/public/'.$settings['app_logo']) }}" height="80" class="mb-2 d-block">
+                            <img src="{{ asset('storage/'.$settings['app_logo']) }}" height="80" class="mb-2 d-block">
                         @endif
                         <input type="file" name="app_logo" class="form-control">
                     </div>

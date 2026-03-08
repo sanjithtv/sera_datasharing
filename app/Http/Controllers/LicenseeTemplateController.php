@@ -23,13 +23,15 @@ class LicenseeTemplateController extends Controller
      */
     public function index()
     {
-        $templates = LicenseeTemplate::with(['licensee', 'subfolder'])
+        $templates = LicenseeTemplate::with(['licensee', 'subfolder', 'classification', 'department'])
         ->withCount('keys') // 👈 Adds count of related LicenseeTemplateKey records
         ->whereIn('status',['active','inactive'])
         ->orderBy('id')
         ->paginate(100);
 
-        return view('modules.licensee_templates.index', compact('templates'));
+        $classifications = Classification::all();
+
+        return view('modules.licensee_templates.index', compact('templates', 'classifications'));
     }
 
     /**

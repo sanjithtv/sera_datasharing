@@ -14,18 +14,21 @@ class SlaveMasterData extends Model
     protected $fillable = [
         'assessment_id',
         'licensee_id',
+        'template_id',
         'headers',
         'row_data',
         'validation_errors',
         'row_index',
         'status',
         'processing_message',
-        'sheet_id'
+        'sheet_id',
+        'row_hash'
     ];
 
     protected $casts = [
         'headers' => 'array',
         'row_data' => 'array',
         'validation_errors' => 'array',
+        'sheet_id' => 'integer',
     ];
 }

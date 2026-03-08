@@ -102,7 +102,7 @@ $profileUser = Auth::user()->profileUser;
                 <div class="dropdown ms-sm-3 header-item topbar-user">
                     <button type="button" class="btn" id="page-header-user-dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                         <span class="d-flex align-items-center">
-                            <img class="rounded-circle header-profile-user" src="@if ($profileUser->profile_image != ''){{ asset('../storage/app/public/profile_images/' . $profileUser->profile_image) }}@else{{ URL::asset('build/images/users/avatar-1.jpg') }}@endif" alt="Header Avatar">
+                            <img class="rounded-circle header-profile-user" src="@if ($profileUser->profile_image != ''){{ asset('storage/profile_images/' . $profileUser->profile_image) }}@else{{ URL::asset('build/images/users/avatar-1.jpg') }}@endif" alt="Header Avatar">
                             <span class="text-start ms-xl-2">
                                 <span class="d-none d-xl-inline-block ms-1 fw-semibold user-name-text">{{Auth::user()->name}}</span>
                                 <span class="d-none d-xl-block ms-1 fs-13 user-name-text">{{ Auth::user()->roles->first()->name }}</span>
@@ -115,7 +115,7 @@ $profileUser = Auth::user()->profileUser;
                         <a class="dropdown-item" href="{{ route('profileuser.show') }}"><i class="mdi mdi-account-circle text-muted fs-16 align-middle me-1"></i> <span class="align-middle">@lang('translation.profile')</span></a>
                         
                        
-                        <a class="dropdown-item" href="{{ asset('../storage/app/public/manual/SERA USER MANUAL V1.pdf') }}" target="_blank"><i class="mdi mdi-lifebuoy text-muted fs-16 align-middle me-1"></i> <span class="align-middle">Help</span></a>
+                        <a class="dropdown-item" href="{{ asset('storage/manual/SERA USER MANUAL V1.pdf') }}" target="_blank"><i class="mdi mdi-lifebuoy text-muted fs-16 align-middle me-1"></i> <span class="align-middle">Help</span></a>
                         <div class="dropdown-divider"></div>
                         
                         <a class="dropdown-item " href="javascript:void();" onclick="event.preventDefault(); document.getElementById('logout-form').submit();"><i class="bx bx-power-off font-size-16 align-middle me-1"></i> <span key="t-logout">@lang('translation.logout')</span></a>

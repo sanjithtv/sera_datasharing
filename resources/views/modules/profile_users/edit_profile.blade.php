@@ -65,7 +65,7 @@ App::setLocale(session('lang'));
                         <div class="mb-2">
             <img
                 src="{{ $profileUser->profile_image
-                        ? asset('../storage/app/public/profile_images/' . $profileUser->profile_image)
+                        ? asset('storage/profile_images/' . $profileUser->profile_image)
                         : asset('build/images/users/avatar-1.jpg') }}"
                 class="rounded-circle"
                 width="90"

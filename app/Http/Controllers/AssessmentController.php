@@ -21,15 +21,23 @@ use Illuminate\Support\Facades\DB;
 
 
 use App\Imports\DynamicTemplateImport;
+use App\Imports\StreamingTemplateImport;
 use Illuminate\Support\Facades\Storage;
 
 use App\Exports\AssessmentMasterMultiSheetExport;
 use App\Exports\AssessmentExport;
+use App\Exports\CsvErrorExport;
+use App\Jobs\ProcessLargeFileImport;
+use App\Traits\ImportProcessorTrait;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 
 
 class AssessmentController extends Controller
 {
+    use ImportProcessorTrait;
 
      public function __construct()
     {
@@ -49,9 +57,9 @@ class AssessmentController extends Controller
     public function index(Request $request)
     {
         // Optional: Add filters, pagination, or search later
-        $assessments = Assessment::with(['licenseeTemplate.subfolder'])
+        $assessments = Assessment::with(['licensee', 'licenseeTemplate.subfolder'])
         ->orderByDesc('created_at')
-        ->get();
+        ->paginate(20);
 
         // Return as JSON for API or pass to Blade view
         if ($request->wantsJson()) {
@@ -94,31 +102,38 @@ class AssessmentController extends Controller
     $sheets = $template->sheets()->with('keys')->get();
 
 
-    // Group master data by sheet
-    $masterData = $assessment->masterData()
-    ->orderBy('template_sheet_id')
-    ->orderBy('entry_counter')
-    ->orderBy('template_key_id')
-    ->get()
-    ->groupBy('template_sheet_id')
-    ->map(function ($sheetGroup) {
-        return $sheetGroup->groupBy('entry_counter')
+    // Group master data by sheet - LIMIT to first 100 rows per sheet
+    $masterDataMap = [];
+    foreach ($sheets as $sheet) {
+        $entryCounters = AssessmentMasterData::where('assessment_id', $assessment->id)
+            ->where('template_sheet_id', $sheet->id)
+            ->distinct()
+            ->orderBy('entry_counter')
+            ->limit(100)
+            ->pluck('entry_counter');
+
+        if ($entryCounters->isEmpty()) {
+            $masterDataMap[$sheet->id] = collect();
+            continue;
+        }
+
+        $sheetData = AssessmentMasterData::where('assessment_id', $assessment->id)
+            ->where('template_sheet_id', $sheet->id)
+            ->whereIn('entry_counter', $entryCounters)
+            ->get();
+
+        $masterDataMap[$sheet->id] = $sheetData->groupBy('entry_counter')
             ->map(function ($rowGroup) {
-
                 $mapped = [];
-
                 foreach ($rowGroup as $item) {
-
                     $mapped[$item->template_key_id] = $item->template_key_value;
                 }
-
                 return $mapped;
             });
-    });
-    $sheetIds = AssessmentMasterData::where('assessment_id', $assessment->id)
-            ->pluck('template_sheet_id')
-            ->unique()
-            ->count();
+    }
+    $masterData = collect($masterDataMap);
+    // ✅ OPTIMIZED: Get sheet count efficiently
+    $sheetIds = $sheets->count();
     //print_r($masterData);exit;
     return view('modules.assessments.show', compact(
         'assessment',
@@ -199,318 +214,653 @@ class AssessmentController extends Controller
 
 public function upload(Request $request)
 {
+    \Illuminate\Support\Facades\Log::info('Assessment upload started', [
+        'assessment_id' => $request->assessment_id ?? 'N/A',
+        'has_file' => $request->hasFile('file'),
+        'file_size' => $request->hasFile('file') ? $request->file('file')->getSize() : 'N/A',
+        'mime_type' => $request->hasFile('file') ? $request->file('file')->getMimeType() : 'N/A',
+        'client_extension' => $request->hasFile('file') ? $request->file('file')->getClientOriginalExtension() : 'N/A',
+        'memory_limit' => ini_get('memory_limit'),
+        'upload_max_filesize' => ini_get('upload_max_filesize'),
+        'post_max_size' => ini_get('post_max_size'),
+    ]);
+
     $validated = $request->validate([
-        'licensee_id' => 'required|integer|exists:sr_licensees,id',
+        'licensee_id'          => 'required|integer|exists:sr_licensees,id',
         'licensee_template_id' => 'required|integer|exists:sr_licensee_templates,id',
-        'assessment_date' => 'required|date',
-        'status' => 'required|string',
-        'file' => 'required|file|mimes:xlsx',
-        'assessment_id' => 'required|integer|exists:sr_licensee_assessments,id',
+        'assessment_date'      => 'required|date',
+        'status'               => 'required|string',
+        'file'                 => [
+            'required', 'file', 'mimes:xlsx,csv,txt',
+            function ($attribute, $value, $fail) {
+                $ext    = strtolower($value->getClientOriginalExtension());
+                $sizeMb = $value->getSize() / 1024 / 1024;
+                if (in_array($ext, ['xlsx', 'xls']) && $sizeMb > 20) {
+                    $fail('Excel files must be 20 MB or smaller. Your file is ' . round($sizeMb, 1) . ' MB.');
+                }
+                if (in_array($ext, ['csv', 'txt']) && $sizeMb > 2048) {
+                    $fail('CSV files must be 2 GB or smaller. Your file is ' . round($sizeMb, 1) . ' MB.');
+                }
+            },
+        ],
+        'assessment_id'        => 'required|integer|exists:sr_licensee_assessments,id',
     ]);
 
 
-   try{
+    $startTime = microtime(true);
+    $resolvedFilePath = null;
+
+    try{
 
     $assessment = Assessment::find($request->assessment_id);
-     SlaveMasterData::where('assessment_id', $assessment->id)->delete();
+
+    // ── CLEAN SLATE: discard any previous staged data and reset all counters.
+    // This is critical when the user re-uploads a file while a previous import
+    // is still staged or mid-processing — without this the polling JS sees a
+    // stale "processing" status and spins forever.
+    SlaveMasterData::where('assessment_id', $assessment->id)->delete();
+
+    \Illuminate\Support\Facades\DB::table('sr_licensee_assessments')
+        ->where('id', $assessment->id)
+        ->update([
+            'status'         => 'draft',
+            'total_rows'     => 0,
+            'processed_rows' => 0,
+            'finalized_rows' => 0,
+            'imported_rows'  => 0,
+            'skipped_rows'   => 0,
+            'duplicate_rows' => 0,
+        ]);
+
+    // Reload so subsequent code sees the fresh state
+    $assessment->refresh();
+
+    Log::info('Upload reset: cleared staged data and counters for re-upload', [
+        'assessment_id' => $assessment->id,
+    ]);
 
     /** ------------------------------------------------------------------
      * 1. Determine sheet → template mapping for this template
      * ------------------------------------------------------------------*/
-    $sheetMapping = TemplateSheet::where('template_id', $validated['licensee_template_id'])
-    ->pluck('id', 'sheet_name')
-    ->toArray();
+    // Fetch all active sheets for this template
+    $allSheets = \App\Models\LicenseeTemplateSheet::where('template_id', $validated['licensee_template_id'])
+        ->where('status', 1)
+        ->orderByDesc('id')
+        ->get();
 
-    /** ------------------------------------------------------------------
-     * 2. Pre-process the uploaded file: resolve all formula cells to their
-     *    actual values so cross-sheet / broken references (#REF!, #VALUE!,
-     *    etc.) are replaced with what Excel last computed before we pass
-     *    the file to the Maatwebsite importer.
-     * ------------------------------------------------------------------*/
-    $resolvedData = $this->resolveExcelFormulas($request->file('file')->getRealPath(), $sheetMapping);
-    $resolvedFilePath = $resolvedData['path'];
-    $maxDataRows      = $resolvedData['maxDataRows'];
+    $sheetMapping = [];
+    foreach ($allSheets->groupBy('sheet_name') as $sheetName => $sheets) {
+        if ($sheets->count() === 1) {
+            $sheetMapping[$sheetName] = $sheets->first()->id;
+        } else {
+            // Duplicate sheet names found. Find the one that actually has keys configured.
+            $selectedSheet = $sheets->first(function ($sheet) {
+                return \App\Models\LicenseeTemplateKey::where('sheet_id', $sheet->id)->exists();
+            });
+            
+            // Fallback to the latest one if neither (or both) have keys
+            $sheetMapping[$sheetName] = $selectedSheet ? $selectedSheet->id : $sheets->first()->id;
+        }
+    }
 
-    $import = new DynamicTemplateImport(
+    $extension = strtolower($request->file('file')->getClientOriginalExtension());
+    $isBypassExtension = in_array($extension, ['csv', 'txt']);
+
+    \Illuminate\Support\Facades\Log::info('=== UPLOAD: Sheet Mapping from DB ===', [
+        'licensee_template_id' => $validated['licensee_template_id'],
+        'db_sheet_mapping'     => $sheetMapping,
+        'extension'            => $extension,
+        'is_csv_bypass'        => $isBypassExtension,
+    ]);
+
+    // For XLSX: log actual sheet names inside the file
+    if (!$isBypassExtension) {
+        try {
+            $sniffReader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($request->file('file')->getRealPath());
+            $sniffReader->setReadDataOnly(true);
+            $sniffReader->setLoadSheetsOnly([]); // Load nothing, just get names
+            $sniffSpreadsheet = $sniffReader->load($request->file('file')->getRealPath());
+            $actualSheetNames = $sniffSpreadsheet->getSheetNames();
+            $sniffSpreadsheet->disconnectWorksheets();
+            unset($sniffSpreadsheet);
+
+            \Illuminate\Support\Facades\Log::info('=== UPLOAD: Actual sheet tabs inside Excel file ===', [
+                'actual_sheet_names' => $actualSheetNames,
+                'mapped_names'       => array_keys($sheetMapping),
+                'unmapped_sheets'    => array_values(array_diff($actualSheetNames, array_keys($sheetMapping))),
+                'missing_from_file'  => array_values(array_diff(array_keys($sheetMapping), $actualSheetNames)),
+            ]);
+        } catch (\Exception $sniffEx) {
+            \Illuminate\Support\Facades\Log::warning('Could not sniff sheet names from Excel file', ['error' => $sniffEx->getMessage()]);
+        }
+    }
+
+    // ✅ Fallback for CSV: If no mapping found, pick the first available sheet for this template
+    if ($isBypassExtension && empty($sheetMapping)) {
+        $firstSheet = \App\Models\LicenseeTemplateSheet::where('template_id', $validated['licensee_template_id'])->first();
+        if ($firstSheet) {
+            $sheetMapping['CSV'] = $firstSheet->id;
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Async threshold: files above this size are dispatched to a queue
+    // job instead of being processed synchronously in the HTTP request.
+    // Excel (XLSX) is prone to OOM, so we use a lower threshold (5MB).
+    // ──────────────────────────────────────────────────────────────────────
+    $csvAsyncThresholdMb   = 10;
+    $excelAsyncThresholdMb = 0; // Send all Excel files to the background queue
+
+    $fileSizeMb  = $request->file('file')->getSize() / 1024 / 1024;
+    $isExcel = in_array($extension, ['xlsx', 'xls']);
+
+    if (($isBypassExtension && $fileSizeMb > $csvAsyncThresholdMb) || ($isExcel && $fileSizeMb > $excelAsyncThresholdMb)) {
+        // ── ASYNC PATH: store the file and dispatch a background job ──
+        Log::info('Large file detected — dispatching background job', [
+            'assessment_id' => $assessment->id,
+            'extension'     => $extension,
+            'file_size_mb'  => round($fileSizeMb, 2),
+        ]);
+
+        $folder = $isBypassExtension ? 'imports/csv' : 'imports/excel';
+        $storedRelPath = $request->file('file')->store($folder, 'local');
+        $storedAbsPath = storage_path('app/' . $storedRelPath);
+
+        $assessment->update(['status' => 'processing']);
+        
+        ProcessLargeFileImport::dispatch(
             $assessment->id,
+            $storedAbsPath,
+            $sheetMapping,
             $assessment->licensee_id,
             $assessment->licensee_template_id,
-            $sheetMapping,
-            $maxDataRows
+            !$isBypassExtension // isExcel
         );
 
+        session_write_close();
+        return view('modules.assessments.processing', compact('assessment'));
+    }
 
-    Excel::import($import, $resolvedFilePath);
+    // ── SYNC PATH (small CSV or small Excel) ──
+    
+    session_write_close();
+
+    if ($isBypassExtension) {
+        Log::info('resolveExcelFormulas BYPASSED for ' . strtoupper($extension) . '. Passing file directly to importer.');
+        $resolvedFilePath = $request->file('file');
+    } else {
+        Log::info('Start resolveExcelFormulas (Sync)', ['time_since_start' => microtime(true) - $startTime]);
+        // Resolve formulas synchronously for small files (< 5MB)
+        $resolvedData     = $this->resolveExcelFormulas($request->file('file')->getRealPath(), $sheetMapping, $assessment->id);
+        $resolvedFilePath = $resolvedData['path'];
+        $maxDataRows      = $resolvedData['maxDataRows'] ?? [];
+        Log::info('Finished resolveExcelFormulas (Sync)', ['time_since_start' => microtime(true) - $startTime]);
+        
+        $totalMappedRows = 0;
+        foreach ($sheetMapping as $sheetName => $config) {
+            $totalMappedRows += max(0, ($maxDataRows[$sheetName] ?? 1) - 1);
+        }
+        $assessment->update(['total_rows' => $totalMappedRows]);
+    }
+
+    Log::info('Init Import Engine', [
+        'is_streaming' => true,
+        'extension'    => $extension,
+    ]);
+
+    $import = new StreamingTemplateImport(
+        $assessment->id,
+        $assessment->licensee_id,
+        $assessment->licensee_template_id,
+        $sheetMapping,
+        $isBypassExtension
+    );
+
+    Log::info('Start Streaming Import', ['time_since_start' => microtime(true) - $startTime]);
+    $import->import($resolvedFilePath);
+    Log::info('Finished Streaming Import', [
+        'time_since_start' => microtime(true) - $startTime,
+        'memory_usage' => round(memory_get_usage() / 1024 / 1024, 2) . ' MB'
+    ]);
+
     /** ------------------------------------------------------------------
-     * 3. Fetch preview (first 50 rows of all sheets)
+     * 3. Fetch preview — errors-first, up to 100 rows per sheet
      * ------------------------------------------------------------------*/
-    /*$previewRows = SlaveMasterData::where('assessment_id', $assessment->id)
-        ->orderBy('sheet_id')
-        ->orderBy('row_index')
-        ->limit(50)
-        ->get();*/
-    $previewRows = SlaveMasterData::where('assessment_id', $assessment->id)->get();
+    \Illuminate\Support\Facades\Log::info('Fetching preview rows (per-sheet, errors-first)', ['time_since_start' => microtime(true) - $startTime]);
+
+    $previewRowsCollection = collect();
+
+    foreach ($import->namePerSheet as $sheetName => $sheetId) {
+        $limit = 100;
+
+        // First: fetch rows that HAVE errors (status='pending')
+        $errorRows = SlaveMasterData::where('assessment_id', $assessment->id)
+            ->where('sheet_id', $sheetId)
+            ->where('status', 'pending')
+            ->orderBy('row_index')
+            ->limit($limit)
+            ->get();
+
+        $remaining = $limit - $errorRows->count();
+
+        // Then: fill remaining slots with clean rows
+        $cleanRows = collect();
+        if ($remaining > 0) {
+            $cleanRows = SlaveMasterData::where('assessment_id', $assessment->id)
+                ->where('sheet_id', $sheetId)
+                ->where('status', '!=', 'pending')
+                ->orderBy('row_index')
+                ->limit($remaining)
+                ->get();
+        }
+
+        $sheetPreview = $errorRows->merge($cleanRows);
+        $previewRowsCollection = $previewRowsCollection->merge($sheetPreview);
+    }
+
+    $previewRows = $previewRowsCollection;
+
+    \Illuminate\Support\Facades\Log::info('Preview rows fetched', [
+        'total_rows' => $previewRows->count(),
+        'per_sheet'  => $import->namePerSheet,
+        'time_since_start' => microtime(true) - $startTime,
+        'memory_usage' => round(memory_get_usage() / 1024 / 1024, 2) . ' MB'
+    ]);
+
+    // Calculate total error count per sheet and total valid rows
+    $totalErrorsPerSheet = SlaveMasterData::where('assessment_id', $assessment->id)
+        ->where('status', 'pending')
+        ->select('sheet_id', \DB::raw('count(*) as count'))
+        ->groupBy('sheet_id')
+        ->pluck('count', 'sheet_id')
+        ->toArray();
+
+    $totalValidCount = SlaveMasterData::where('assessment_id', $assessment->id)
+        ->where('status', 'processed')
+        ->count();
+
+    $totalErrorCount = array_sum($totalErrorsPerSheet);
 
     return view('modules.assessments.preview_new', [
-        'assessment' => $assessment,
-        'previewRows' => $previewRows,
-        'canProceed' => $import->canProceed,
-        'errorsPerSheet' => $import->errorsPerSheet,
-        'namePerSheet' => $import->namePerSheet
+        'assessment'          => $assessment,
+        'previewRows'         => $previewRows,
+        'canProceed'          => $import->canProceed,
+        'errorsPerSheet'      => $import->errorsPerSheet,
+        'namePerSheet'        => $import->namePerSheet,
+        'totalErrorsPerSheet' => $totalErrorsPerSheet,
+        'totalValidCount'     => $totalValidCount,
+        'totalErrorCount'     => $totalErrorCount
     ]);
     }catch(\Exception $e){
         return back()->with('error', 'Import failed: ' . $e->getMessage());
+    } finally {
+        // Clean up the resolved Excel temp file — it's only needed during import
+        if (isset($resolvedFilePath) && is_string($resolvedFilePath) && file_exists($resolvedFilePath)) {
+            @unlink($resolvedFilePath);
+            Log::info('Temp Excel file deleted in finally block', ['path' => $resolvedFilePath]);
+        }
+    }
+}
+
+public function importData(Request $request, Assessment $assessment)
+{
+    try {
+        $assessment = Assessment::findOrFail($request->assessment_id);
+
+        // Update status to 'committing' (final background move)
+        $assessment->update(['status' => 'committing']);
+
+        // Dispatch background finalize job
+        \App\Jobs\FinalizeImportJob::dispatch($assessment->id);
+
+        // Success message is already queued in session by update() or manual, 
+        // but we close it here to be safe before redirect.
+        session_write_close();
+
+        return redirect()
+            ->route('assessments.show', $assessment->id)
+            ->with('success', 'Final data import started in background. The page will update once complete.');
+
+    } catch (\Exception $e) {
+        Log::error('Final import dispatch failed', ['error' => $e->getMessage()]);
+        return redirect()->back()->with('error', 'Failed to start import: ' . $e->getMessage());
     }
 }
 
 /**
- * Provided by Mhd AiCrunch
- * Pre-process an xlsx file: read ALL sheets using Excel's own cached formula
- * values (setReadDataOnly), then keep only mapped sheets, trim trailing empty
- * rows, and save a clean file for fast Maatwebsite import.
- *
- * Key optimisations vs. the original approach:
- *   1. setReadDataOnly(true)  — skips formula re-evaluation entirely;
- *      uses the values Excel cached when the file was last saved (~3s vs ~73s).
- *   2. ALL sheets are loaded so cross-sheet formula cached values (License
- *      Number, Company Name, etc.) are read correctly.
- *   3. Non-mapped sheets are removed before saving → smaller output file.
- *   4. Trailing-row trim — removes thousands of empty rows so
- *      Maatwebsite only iterates over actual data rows.
- *
- * Returns the path of a temporary xlsx file ready for import.
+ * Download an Error report for rows that were skipped during importData().
+ * The report contains: row number (in the original file), column name, and error message.
+ * Now streams as high-performance CSV to prevent server out-of-memory crashes on massive files.
  */
-private function resolveExcelFormulas(string $sourcePath, array $sheetMapping): array
+public function downloadErrors(Assessment $assessment)
 {
-    $mappedSheetNames = array_keys($sheetMapping);
-    $excelErrors = ['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A', '#GETTING_DATA'];
+    $errorPath = "imports/errors/assessment_{$assessment->id}_errors.json";
 
-    // ━━━ PASS 1: Fast load with cached values ━━━
-    $reader1 = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($sourcePath);
-    $reader1->setReadDataOnly(true);
+    if (!Storage::exists($errorPath)) {
+        return back()->with('error', 'No error report found for this assessment. Either there were no errors, or the report has expired.');
+    }
 
-    $spreadsheet = $reader1->load($sourcePath);
+    $fileName = "assessment_{$assessment->id}_import_errors.csv";
 
-    // Scan mapped sheets for error values and find last data row
-    $errorCells = [];   // [sheetTitle => [coord, ...]]
-    $maxDataRow = [];   // [sheetTitle => lastDataRow]
-    $formulasToStrip = []; // [sheetTitle => [coord => value, ...]]
+    return response()->streamDownload(function () use ($errorPath) {
+        $skippedRows = json_decode(Storage::get($errorPath), true) ?? [];
+        
+        // Release session lock immediately to allow other requests
+        session_write_close();
 
-    foreach ($mappedSheetNames as $sheetTitle) {
-        $sheet = $spreadsheet->getSheetByName($sheetTitle);
-        if (!$sheet) continue;
+        $handle = fopen('php://output', 'w');
+        // Add UTF-8 BOM for Excel compatibility (especially for Arabic content)
+        fprintf($handle, chr(0xEF).chr(0xBB).chr(0xBF));
 
-        $highestCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString(
-            $sheet->getHighestColumn()
-        );
-        $totalRows  = $sheet->getHighestRow();
-        $errorCells[$sheetTitle] = [];
-        $formulasToStrip[$sheetTitle] = [];
-        $lastRow = 1;
+        // Add Headers
+        fputcsv($handle, ['Row Number (in original file)', 'Column', 'Error Reason']);
 
-        for ($row = 2; $row <= $totalRows; $row++) {
-            for ($col = 1; $col <= $highestCol; $col++) {
-                $coord = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col) . $row;
-                $cell  = $sheet->getCell($coord);
-                $val   = $cell->getValue();
-                
-                // If it's a formula, we check the cached (old) value
-                if ($cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA) {
-                    $val = $cell->getOldCalculatedValue();
+        // Stream Write Data
+        foreach ($skippedRows as $item) {
+            $errors = $item['errors'] ?? [];
+
+            if (empty($errors)) {
+                fputcsv($handle, [
+                    $item['row_index'] ?? 'Unknown',
+                    '—',
+                    'Row contained validation errors (no detail available)'
+                ]);
+                continue;
+            }
+
+            foreach ($errors as $column => $messages) {
+                foreach ((array) $messages as $message) {
+                    fputcsv($handle, [
+                        $item['row_index'] ?? 'Unknown',
+                        $column,
+                        $message
+                    ]);
                 }
+            }
+        }
 
-                if ($val !== null && $val !== '' && !(is_string($val) && trim($val) === '')) {
-                    if ($row > $lastRow) $lastRow = $row;
-                    
-                    if (is_string($val) && in_array(strtoupper(trim($val)), $excelErrors)) {
-                        $errorCells[$sheetTitle][] = $coord;
-                    } elseif ($cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA) {
-                        // It's a valid formula result -> mark to strip formula by setting static value
-                        $formulasToStrip[$sheetTitle][$coord] = $val;
+        fclose($handle);
+    }, $fileName, [
+        'Content-Type' => 'text/csv',
+        'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+    ]);
+}
+
+/**
+ * Step 1 Validation Error Report (CSV)
+ *
+ * Generates a CSV with:
+ *  Section A — Summary: total errored rows, number of distinct error reasons
+ *  Section B — Reason Breakdown: each unique reason and how many rows have it
+ *  Section C — Row Detail: one row per errored row with all column values + errors
+ */
+public function downloadStep1Errors(Assessment $assessment)
+{
+    // 1. Initial check: are there any errors at all? (Low cost exists)
+    $hasErrors = \App\Models\SlaveMasterData::where('assessment_id', $assessment->id)
+        ->where('status', 'pending')
+        ->exists();
+
+    if (!$hasErrors) {
+        return back()->with('info', 'No validation errors found for this assessment.');
+    }
+
+    $filename = "assessment_{$assessment->id}_step1_errors.csv";
+
+    return response()->streamDownload(function () use ($assessment) {
+        // Release session lock immediately to allow other requests (polling/navigation)
+        session_write_close();
+
+        // Increase execution time for massive downloads
+        @set_time_limit(900); 
+
+        $output = fopen('php://output', 'w');
+        
+        // Fetch sheet names for mapping
+        $sheetNames = \App\Models\LicenseeTemplateSheet::where('template_id', $assessment->licensee_template_id)
+            ->pluck('sheet_name', 'id')
+            ->toArray();
+
+        // Use a temporary file to capture detail rows while we calculate
+        // the summary in memory from a SINGLE database scan.
+        $tempFile = tmpfile(); 
+
+        $reasonCounts = [];
+        $erroredCount = 0;
+        $columnHeaders = null;
+        $sentinelMap = [
+            '__INVALID_DATE__'   => 'Invalid Date',
+            '__INVALID_NUMBER__' => 'Invalid Number',
+            '__INVALID_TIME__'   => 'Invalid Time',
+        ];
+
+        // Single Pass Scan - Chunking ensures strict O(1) memory usage by dropping PDO buffers
+        \App\Models\SlaveMasterData::where('assessment_id', $assessment->id)
+            ->where('status', 'pending')
+            ->orderBy('id')
+            ->chunkById(5000, function ($chunk) use (&$erroredCount, &$columnHeaders, &$reasonCounts, &$tempFile, $sentinelMap, $sheetNames) {
+                foreach ($chunk as $row) {
+                    $erroredCount++;
+
+                    // Single JSON decode per row
+                    $rowData = is_array($row->row_data) ? $row->row_data : json_decode($row->row_data, true);
+                    $validationErrors = is_array($row->validation_errors) ? $row->validation_errors : json_decode($row->validation_errors, true);
+
+                    if ($columnHeaders === null && $rowData) {
+                        $columnHeaders = array_keys($rowData);
+                    }
+
+                    // A. Aggregate Summary (Memory)
+                    if ($validationErrors) {
+                        foreach ($validationErrors as $col => $messages) {
+                            foreach ((array) $messages as $msg) {
+                                $key = "{$col}: {$msg}";
+                                $reasonCounts[$key] = ($reasonCounts[$key] ?? 0) + 1;
+                            }
+                        }
+                    }
+
+                    // B. Write Detail Row to Temp File
+                    $values = [];
+                    if ($columnHeaders) {
+                        foreach ($columnHeaders as $col) {
+                            $val = $rowData[$col] ?? '';
+                            $values[] = $sentinelMap[$val] ?? $val;
+                        }
+                    }
+
+                    $errorStrings = [];
+                    if ($validationErrors) {
+                        foreach ($validationErrors as $col => $messages) {
+                            foreach ((array) $messages as $msg) {
+                                $errorStrings[] = "{$col}: {$msg}";
+                            }
+                        }
+                    }
+
+                    $sheetName = $sheetNames[$row->sheet_id] ?? "Sheet #{$row->sheet_id}";
+                    fputcsv($tempFile, array_merge([$row->row_index, $row->sheet_id, $sheetName], $values, [implode(' | ', $errorStrings)]));
+                }
+            });
+
+        // --- OUTPUT SECTION A: Summary ---
+        arsort($reasonCounts);
+        fputcsv($output, ['=== STEP 1 VALIDATION ERROR REPORT ===']);
+        fputcsv($output, ['Assessment ID', $assessment->id]);
+        fputcsv($output, ['Generated At', now()->toDateTimeString()]);
+        fputcsv($output, []);
+        fputcsv($output, ['Total Errored Rows',  $erroredCount]);
+        fputcsv($output, ['Distinct Error Reasons', count($reasonCounts)]);
+        fputcsv($output, []);
+
+        // --- OUTPUT SECTION B: Breakdown ---
+        fputcsv($output, ['=== ERROR REASON BREAKDOWN ===']);
+        fputcsv($output, ['Error Reason', 'Number of Rows']);
+        foreach ($reasonCounts as $reason => $count) {
+            fputcsv($output, [$reason, $count]);
+        }
+        fputcsv($output, []);
+
+        // --- OUTPUT SECTION C: Details (Drain Temp File) ---
+        fputcsv($output, ['=== DETAILED ERROR ROWS ===']);
+        if ($columnHeaders) {
+            fputcsv($output, array_merge(['Row #', 'Sheet ID', 'Sheet Name'], $columnHeaders, ['Validation Errors']));
+        }
+
+        // High-performance stream copy
+        rewind($tempFile);
+        stream_copy_to_stream($tempFile, $output);
+
+        fclose($tempFile);
+        fclose($output);
+
+    }, $filename, [
+        'Content-Type'        => 'text/csv; charset=UTF-8',
+        'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+    ]);
+}
+
+/**
+ * Show a preview of staged (slave_master_data) rows for an assessment
+ * that was parsed via the background job, so the user can confirm import.
+ * Reuses the same preview_new.blade.php as the synchronous upload path.
+ */
+public function reviewParsed(Assessment $assessment)
+{
+    if (!in_array($assessment->status, ['parsed', 'processing_preview'])) {
+        return redirect()->route('assessments.show', $assessment->id)
+            ->with('error', 'This assessment does not have staged data to review.');
+    }
+
+    $startTime = microtime(true);
+
+    // Release session lock so parallel uploads or navigation 
+    // are not blocked by the database queries below.
+    session_write_close();
+
+    // Build the sheet mapping
+    $allSheets = \App\Models\LicenseeTemplateSheet::where('template_id', $assessment->licensee_template_id)
+        ->where('status', 1)
+        ->orderByDesc('id')
+        ->get();
+
+    $sheetMapping = [];
+    foreach ($allSheets->groupBy('sheet_name') as $sheetName => $sheets) {
+        if ($sheets->count() === 1) {
+            $sheetMapping[$sheetName] = $sheets->first()->id;
+        } else {
+            $selectedSheet = $sheets->first(function ($sheet) {
+                return \App\Models\LicenseeTemplateKey::where('sheet_id', $sheet->id)->exists();
+            });
+            $sheetMapping[$sheetName] = $selectedSheet ? $selectedSheet->id : $sheets->first()->id;
+        }
+    }
+
+    $previewRowsCollection = collect();
+    $errorsPerSheet = [];
+    $namePerSheet = [];
+
+    foreach ($sheetMapping as $sheetName => $sheetId) {
+        $namePerSheet[$sheetName] = $sheetId;
+        $errorsPerSheet[$sheetName] = [];
+
+        $limit = 100;
+        
+        // Use the new idx_review_preview index
+        $errorRows = SlaveMasterData::where('assessment_id', $assessment->id)
+            ->where('sheet_id', $sheetId)
+            ->where('status', 'pending')
+            ->orderBy('row_index')
+            ->limit($limit)
+            ->get();
+
+        $errorCount = $errorRows->count();
+        $remaining = $limit - $errorCount;
+        $cleanRows = collect();
+
+        if ($remaining > 0) {
+            $cleanRows = SlaveMasterData::where('assessment_id', $assessment->id)
+                ->where('sheet_id', $sheetId)
+                ->where('status', '!=', 'pending')
+                ->orderBy('row_index')
+                ->limit($remaining)
+                ->get();
+        }
+
+        // Optimized error mapping
+        if ($errorCount > 0) {
+            foreach ($errorRows as $row) {
+                $errs = is_array($row->validation_errors)
+                    ? $row->validation_errors
+                    : json_decode($row->validation_errors, true);
+                if (!empty($errs)) {
+                    if (isset($errs['__missing_sheet'])) {
+                        $errorsPerSheet[$sheetName][] = [
+                            'type'    => 'missing_sheet',
+                            'message' => is_array($errs['__missing_sheet']) ? $errs['__missing_sheet'][0] : $errs['__missing_sheet'],
+                        ];
+                    } elseif (isset($errs['__empty_sheet'])) {
+                        $emptyErrorData = is_array($errs['__empty_sheet']) && isset($errs['__empty_sheet']['message']) 
+                            ? $errs['__empty_sheet'] 
+                            : ['message' => is_array($errs['__empty_sheet']) ? $errs['__empty_sheet'][0] : $errs['__empty_sheet']];
+                            
+                        $errorsPerSheet[$sheetName][] = [
+                            'type'    => 'empty_sheet',
+                            'message' => $emptyErrorData['message'],
+                            'missing_columns' => $emptyErrorData['missing_columns'] ?? []
+                        ];
+                    } elseif (isset($errs['__header_error'])) {
+                        $errorsPerSheet[$sheetName][] = [
+                            'type'    => 'header_validation',
+                            'message' => is_array($errs['__header_error']) ? implode(' ', $errs['__header_error']) : (string)$errs['__header_error'],
+                            'errors'  => $errs['__header_error']
+                        ];
+                    } else {
+                        // Standard row validation errors
+                        $errorsPerSheet[$sheetName][$row->row_index] = $errs;
                     }
                 }
             }
         }
-        $maxDataRow[$sheetTitle] = $lastRow;
+
+        // Merge directly to collection
+        $previewRowsCollection = $previewRowsCollection->concat($errorRows)->concat($cleanRows);
     }
 
-    // Apply formula stripping (convert to values) for valid formulas found in Pass 1
-    $stripCount = 0;
-    foreach ($formulasToStrip as $sheetTitle => $updates) {
-        $sheet = $spreadsheet->getSheetByName($sheetTitle);
-        foreach ($updates as $coord => $val) {
-            $sheet->setCellValue($coord, $val);
-            $stripCount++;
-        }
-    }
+    $hasErrors = !empty(array_filter($errorsPerSheet));
+    $canProceed = !$hasErrors;
 
-    $totalErrors = 0;
-    foreach ($errorCells as $cells) $totalErrors += count($cells);
+    // Calculate total error count per sheet and total valid rows
+    $totalErrorsPerSheet = SlaveMasterData::where('assessment_id', $assessment->id)
+        ->where('status', 'pending')
+        ->select('sheet_id', \DB::raw('count(*) as count'))
+        ->groupBy('sheet_id')
+        ->pluck('count', 'sheet_id')
+        ->toArray();
 
-    // ━━━ PASS 2: Re-evaluate ONLY error cells with full formula support ━━━
-    if ($totalErrors > 0) {
-        $maxRows = $maxDataRow;
-        $mapped  = $mappedSheetNames;
+    $totalValidCount = SlaveMasterData::where('assessment_id', $assessment->id)
+        ->where('status', 'processed')
+        ->count();
 
-        $reader2 = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($sourcePath);
-        $reader2->setReadFilter(new class($mapped, $maxRows) implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
-            private $mapped;
-            private $maxRows;
-            public function __construct(array $mapped, array $maxRows) {
-                $this->mapped  = $mapped;
-                $this->maxRows = $maxRows;
-            }
-            public function readCell(string $columnAddress, int $row, string $worksheetName = ''): bool {
-                if (in_array($worksheetName, $this->mapped)) {
-                    return $row <= ($this->maxRows[$worksheetName] ?? 100);
-                }
-                return true; // reference sheets load fully for cross-sheet formulas
-            }
-        });
+    $totalErrorCount = array_sum($totalErrorsPerSheet);
 
-        $spreadsheet2 = $reader2->load($sourcePath);
+    Log::info('reviewParsed execution finished', [
+        'assessment_id' => $assessment->id,
+        'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
+        'rows_previewed' => $previewRowsCollection->count()
+    ]);
 
-        $fixedCount = 0;
-        foreach ($errorCells as $sheetTitle => $coords) {
-            if (empty($coords)) continue;
-            $srcSheet = $spreadsheet2->getSheetByName($sheetTitle);
-            $dstSheet = $spreadsheet->getSheetByName($sheetTitle);
-            if (!$srcSheet || !$dstSheet) continue;
-
-            foreach ($coords as $coord) {
-                $val = null;
-                try {
-                    $val = $srcSheet->getCell($coord)->getCalculatedValue();
-                } catch (\Throwable $e) {
-                    $val = null;
-                }
-                
-                // If re-evaluation still yields an error, try one last check of the cached value
-                if ($val === null || (is_string($val) && in_array(strtoupper(trim($val)), $excelErrors))) {
-                    $cached = $srcSheet->getCell($coord)->getOldCalculatedValue();
-                    $val = ($cached !== null && !(is_string($cached) && in_array(strtoupper(trim($cached)), $excelErrors)))
-                        ? $cached : null;
-                }
-
-                if ($val !== null) {
-                    $dstSheet->setCellValue($coord, $val);
-                    $fixedCount++;
-                }
-            }
-        }
-
-        $spreadsheet2->disconnectWorksheets();
-        unset($spreadsheet2);
-    }
-
-    // ━━━ Remove non-mapped sheets ━━━
-    foreach ($spreadsheet->getSheetNames() as $name) {
-        if (!in_array($name, $mappedSheetNames)) {
-            $spreadsheet->removeSheetByIndex(
-                $spreadsheet->getIndex($spreadsheet->getSheetByName($name))
-            );
-        }
-    }
-
-    // ━━━ Save ━━━
-    $tempPath  = sys_get_temp_dir() . '/excel_resolved_' . uniqid() . '.xlsx';
-    $writer    = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
-    $writer->save($tempPath);
-
-    $spreadsheet->disconnectWorksheets();
-    unset($spreadsheet);
-
-    return [
-        'path' => $tempPath,
-        'maxDataRows' => $maxDataRow
-    ];
+    return view('modules.assessments.preview_new', [
+        'assessment'          => $assessment,
+        'previewRows'         => $previewRowsCollection,
+        'canProceed'          => $canProceed,
+        'errorsPerSheet'      => $errorsPerSheet,
+        'namePerSheet'        => $namePerSheet,
+        'totalErrorsPerSheet' => $totalErrorsPerSheet,
+        'totalValidCount'     => $totalValidCount,
+        'totalErrorCount'     => $totalErrorCount
+    ]);
 }
-
-
-
-
-public function importData(Request $request, Assessment $assessment)
-{
-    DB::beginTransaction();
-    try {
-        // Fetch rows from slave_master_data for this assessment
-        $assessment = Assessment::find($request->assessment_id);
-
-        $rows = SlaveMasterData::where('assessment_id', $assessment->id)
-            ->orderBy('row_index')
-            ->orderBy('sheet_id')
-            ->get();
-
-        $insertBatch = [];
-        $importedCount = 0;
-        $skippedCount = 0;
-
-        foreach ($rows as $row) {
-            $errors = $row->validation_errors;
-
-            if (!empty($errors)) {
-                // Skip row if validation errors
-                $skippedCount++;
-                continue;
-            }
-
-            // Transform for main assessment data table
-            $headers = is_array($row->headers) ? $row->headers : json_decode($row->headers, true);
-            $rowData = is_array($row->row_data) ? $row->row_data : json_decode($row->row_data, true);
-            $mapped = [];
-            foreach ($headers as $i => $key) {
-                $mapped[$key] = $rowData[$key] ?? null;
-            }
-            foreach ($rowData as $col => $value) {
-                $templateKey = LicenseeTemplateKey::where('short_code', $col)->where('licensee_template_id',$assessment->licensee_template_id)->where('licensee_id',$assessment->licensee_id)->where('sheet_id',$row->sheet_id)->first();
-                if ($templateKey) {
-                     $insertBatch[] = [
-                        'licensee_id' => $row->licensee_id,
-                        'assessment_id' => $row->assessment_id,
-                        'template_sheet_id' => $row->sheet_id,
-                        'template_key_id' => $templateKey->id,
-                        'template_key_value' => $value,
-                        'type' => $templateKey->type,
-                        'entry_counter' => $row->row_index,
-                    ];
-                }
-            }
-            // Insert every 500 rows
-            if (count($insertBatch) === 500) {
-                AssessmentMasterData::insert($insertBatch);
-                $insertBatch = [];
-            }
-
-            $importedCount++;
-        }
-
-        if (!empty($insertBatch)) {
-            AssessmentMasterData::insert($insertBatch);
-        }
-
-        // Update assessment as completed
-        $assessment->update([
-            'status' => 'completed',
-            'imported_rows' => $importedCount,
-            'skipped_rows' => $skippedCount,
-        ]);
-
-        SlaveMasterData::where('assessment_id', $assessment->id)->delete();
-
-        DB::commit();
-
-        return redirect()
-            ->route('assessments.show', $assessment->id)
-            ->with('success', "Import Complete: $importedCount rows imported, $skippedCount skipped.");
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        print_r($e->getMessage());
-        //return back()->with('error', 'Import failed: ' . $e->getMessage());
-    }
-}
-
-
 
     /**
      * STEP 2 — Async import job trigger
@@ -946,22 +1296,256 @@ public function exportAssessment()
 
 public function exportMasterData($assessmentId)
 {
-     $fileName = 'Assessment_Preview_MasterData_' . $assessmentId . '.xlsx';
+    $assessment = Assessment::with('licensee', 'template')->findOrFail($assessmentId);
 
+    // Get unique sheet IDs for this assessment
     $sheetIds = AssessmentMasterData::where('assessment_id', $assessmentId)
-            ->pluck('template_sheet_id')
-            ->unique()
-            ->count();
-    if($sheetIds>0){
-        return Excel::download(
-            new AssessmentMasterMultiSheetExport($assessmentId),
-            $fileName
-        );
-    }
-    return false;
+        ->distinct()
+        ->pluck('template_sheet_id');
 
+    if ($sheetIds->isEmpty()) {
+        return back()->with('error', 'No data to export.');
+    }
+
+    // ✅ OPTIMIZATION: If only 1 sheet, export as CSV to handle millions of rows without memory issues or Excel limits.
+    if ($sheetIds->count() === 1) {
+        $sheetId = $sheetIds->first();
+        $sheet = LicenseeTemplateSheet::with('keys')->findOrFail($sheetId);
+        return $this->exportToCsv($assessment, $sheet);
+    }
+
+    // ✅ OPTIMIZATION: If many sheets, export as a ZIP of CSVs to prevent OOM errors from PHPSpreadsheet
+    return $this->exportToZip($assessment, $sheetIds);
 }
 
+/**
+ * Highly optimized streaming ZIP of CSVs export for massive multi-sheet datasets.
+ */
+private function exportToZip($assessment, $sheetIds)
+{
+    $fileName = 'Assessment_MasterData_' . $assessment->id . '_' . now()->format('Ymd') . '.zip';
+    $tempDir = storage_path('app/temp');
+    
+    if (!file_exists($tempDir)) {
+        mkdir($tempDir, 0755, true);
+    }
 
+    $zipPath = $tempDir . '/' . $fileName;
+    $zip = new \ZipArchive();
+    
+    if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+        return back()->with('error', 'Could not create ZIP archive.');
+    }
 
+    $templateSheets = LicenseeTemplateSheet::with('keys')
+        ->whereIn('id', $sheetIds)
+        ->get();
+
+    $tempFiles = [];
+
+    foreach ($templateSheets as $sheet) {
+        $csvFileName = Str::slug($sheet->sheet_name) . '.csv';
+        $tempCsvPath = $tempDir . '/' . uniqid('csv_') . '.csv';
+        $tempFiles[] = $tempCsvPath;
+
+        $handle = fopen($tempCsvPath, 'w');
+        // Add UTF-8 BOM for Excel compatibility (especially for Arabic content)
+        fprintf($handle, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        $keys = $sheet->keys->sortBy('id');
+        $keyIds = $keys->pluck('id')->toArray();
+        $keyIdToIndex = array_flip($keyIds);
+        $headerRow = $keys->pluck('short_code')->toArray();
+
+        fputcsv($handle, $headerRow);
+
+        $maxEntryCounter = DB::table('sr_licensee_assessment_master_data')
+            ->where('assessment_id', $assessment->id)
+            ->where('template_sheet_id', $sheet->id)
+            ->max('entry_counter') ?? 0;
+
+        $currentRowIndex = -1;
+        $currentRow = [];
+        $columnCount = count($keyIds);
+
+        // Fetch in chunks of 5,000 entry_counters to completely avoid PDO buffering memory exhaustion
+        $chunkSize = 5000;
+        for ($start = 0; $start <= $maxEntryCounter; $start += $chunkSize) {
+            $end = $start + $chunkSize - 1;
+
+            $entries = DB::table('sr_licensee_assessment_master_data')
+                ->where('assessment_id', $assessment->id)
+                ->where('template_sheet_id', $sheet->id)
+                ->whereBetween('entry_counter', [$start, $end])
+                ->orderBy('entry_counter')
+                ->orderBy('template_key_id')
+                ->get();
+
+            foreach ($entries as $entry) {
+                if ($entry->entry_counter !== $currentRowIndex) {
+                    // Flush the previous row to output
+                    if ($currentRowIndex !== -1) {
+                        fputcsv($handle, $currentRow);
+                    }
+                    $currentRowIndex = $entry->entry_counter;
+                    $currentRow = array_fill(0, $columnCount, null);
+                }
+
+                if (isset($keyIdToIndex[$entry->template_key_id])) {
+                    $idx = $keyIdToIndex[$entry->template_key_id];
+                    $currentRow[$idx] = $entry->template_key_value;
+                }
+            }
+        }
+
+        // Flush final row
+        if ($currentRowIndex !== -1) {
+            fputcsv($handle, $currentRow);
+        }
+
+        fclose($handle);
+        $zip->addFile($tempCsvPath, $csvFileName);
+    }
+
+    $zip->close();
+
+    // Clean up temporary CSV files now that they are in the ZIP
+    foreach ($tempFiles as $tempFile) {
+        @unlink($tempFile);
+    }
+
+    return response()->download($zipPath)->deleteFileAfterSend(true);
+}
+
+/**
+ * Highly optimized streaming CSV export for massive datasets.
+ */
+private function exportToCsv($assessment, $sheet)
+{
+    $fileName = 'Assessment_' . $assessment->id . '_' . Str::slug($sheet->sheet_name) . '_' . now()->format('Ymd') . '.csv';
+
+    $headers = [
+        'Content-Type'        => 'text/csv',
+        'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+    ];
+
+    return new StreamedResponse(function () use ($assessment, $sheet) {
+        $handle = fopen('php://output', 'w');
+
+        // Add UTF-8 BOM for Excel compatibility (especially for Arabic content)
+        fprintf($handle, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        // Get keys to build header columns
+        $keys = $sheet->keys->sortBy('id');
+        $keyIds = $keys->pluck('id')->toArray();
+        $keyIdToIndex = array_flip($keyIds);
+        $headerRow = $keys->pluck('short_code')->toArray();
+
+        fputcsv($handle, $headerRow);
+
+        $maxEntryCounter = DB::table('sr_licensee_assessment_master_data')
+            ->where('assessment_id', $assessment->id)
+            ->where('template_sheet_id', $sheet->id)
+            ->max('entry_counter') ?? 0;
+
+        $currentRowIndex = -1;
+        $currentRow = [];
+        $columnCount = count($keyIds);
+
+        // Fetch in chunks of 5,000 entry_counters to completely avoid PDO buffering memory exhaustion
+        $chunkSize = 5000;
+        for ($start = 0; $start <= $maxEntryCounter; $start += $chunkSize) {
+            $end = $start + $chunkSize - 1;
+
+            $entries = DB::table('sr_licensee_assessment_master_data')
+                ->where('assessment_id', $assessment->id)
+                ->where('template_sheet_id', $sheet->id)
+                ->whereBetween('entry_counter', [$start, $end])
+                ->orderBy('entry_counter')
+                ->orderBy('template_key_id')
+                ->get();
+
+            foreach ($entries as $entry) {
+                if ($entry->entry_counter !== $currentRowIndex) {
+                    // Flush the previous row to output
+                    if ($currentRowIndex !== -1) {
+                        fputcsv($handle, $currentRow);
+                    }
+                    $currentRowIndex = $entry->entry_counter;
+                    $currentRow = array_fill(0, $columnCount, null);
+                }
+
+                if (isset($keyIdToIndex[$entry->template_key_id])) {
+                    $idx = $keyIdToIndex[$entry->template_key_id];
+                    $currentRow[$idx] = $entry->template_key_value;
+                }
+            }
+        }
+
+        // Flush final row
+        if ($currentRowIndex !== -1) {
+            fputcsv($handle, $currentRow);
+        }
+
+        fclose($handle);
+    }, 200, $headers);
+    }
+
+    /**
+     * Get live progress of the assessment import.
+     */
+    public function getProgress(Assessment $assessment)
+    {
+        // Prevent session locking from blocking the polling request
+        session_write_close();
+        
+        // Fetch raw record from DB to bypass any Eloquent stale state or isolation issues
+        $rawAssessment = \Illuminate\Support\Facades\DB::table('sr_licensee_assessments')
+            ->where('id', $assessment->id)
+            ->first();
+
+        if (!$rawAssessment) {
+            return response()->json(['error' => 'Assessment not found'], 404);
+        }
+
+        $data = [
+            'status'         => $rawAssessment->status,
+            'total_rows'     => (int)$rawAssessment->total_rows,
+            'processed_rows' => (int)$rawAssessment->processed_rows,
+            'finalized_rows' => (int)$rawAssessment->finalized_rows,
+            'duplicate_rows' => (int)($rawAssessment->duplicate_rows ?? 0),
+            'percentage'     => $this->calculatePercentageFromRaw($rawAssessment),
+        ];
+
+        Log::info("Assessment Progress Polling (Direct DB)", [
+            'assessment_id' => $assessment->id,
+            'data'          => $data
+        ]);
+
+        return response()->json($data);
+    }
+
+    private function calculatePercentageFromRaw($raw)
+    {
+        if ($raw->status === 'completed') return 100;
+        if ($raw->total_rows <= 0) return 0;
+
+        if ($raw->status === 'committing') {
+            return min(100, round(($raw->finalized_rows / $raw->total_rows) * 100));
+        }
+
+        return min(100, round(($raw->processed_rows / $raw->total_rows) * 100));
+    }
+
+    private function calculatePercentage(Assessment $assessment)
+    {
+        if ($assessment->status === 'completed') return 100;
+        if ($assessment->total_rows <= 0) return 0;
+
+        if ($assessment->status === 'committing') {
+            return min(100, round(($assessment->finalized_rows / $assessment->total_rows) * 100));
+        }
+
+        return min(100, round(($assessment->processed_rows / $assessment->total_rows) * 100));
+    }
 }

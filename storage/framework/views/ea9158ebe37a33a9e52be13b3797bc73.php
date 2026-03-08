@@ -2,9 +2,6 @@
 App::setLocale(session('lang'));
 ?>
 
-<?php $__env->startSection('title'); ?>
-    <?php echo app('translator')->get('translation.assessments'); ?>
-<?php $__env->stopSection(); ?>
 <?php $__env->startSection('css'); ?>
     <link href="<?php echo e(URL::asset('build/libs/sweetalert2/sweetalert2.min.css')); ?>" rel="stylesheet" type="text/css" />
 <?php $__env->stopSection(); ?>
@@ -13,21 +10,22 @@ App::setLocale(session('lang'));
 <?php $__env->startSection('content'); ?>
     <?php $__env->startComponent('components.breadcrumb'); ?>
         <?php $__env->slot('li_1'); ?>
-            SURVEYS
+            <?php echo app('translator')->get('translation.assessments'); ?>
         <?php $__env->endSlot(); ?>
         <?php $__env->slot('title'); ?>
-            <?php echo app('translator')->get('translation.assessments'); ?>
+            <?php echo app('translator')->get('translation.list'); ?>
         <?php $__env->endSlot(); ?>
 <?php echo $__env->renderComponent(); ?>
 <div class="row">
         <!--end col-->
         <div class="col-xxl-12">
+            <h4 class="mb-sm-1 font-size-18"><?php echo app('translator')->get('translation.assessments'); ?></h4>
             <div class="card" id="companyList">
                 <div class="card-header">
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" placeholder="Search for <?php echo app('translator')->get('translation.licensee'); ?>...">
+                                <input type="text" class="form-control search" id="tableSearch" placeholder="<?php echo app('translator')->get('translation.search'); ?>...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
@@ -38,7 +36,7 @@ App::setLocale(session('lang'));
                                 <button type="button" id="dropdownMenuLink1" data-bs-toggle="dropdown" aria-expanded="false"
                                     class="btn btn-soft-info"><i class="ri-more-2-fill"></i></button>
                                 <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink1">
-                                    <li><a class="dropdown-item" href="#">Export as Excel</a></li>
+                                    <li><a class="dropdown-item" href="<?php echo e(route('assessments.export.excel')); ?>">Export as Excel</a></li>
                                 </ul>  
                             </div>
                         </div>
@@ -55,13 +53,13 @@ App::setLocale(session('lang'));
                             <table class="table align-middle table-nowrap mb-0" id="customerTable">
                                 <thead class="table-light">
                                     <tr>
-                                        <th class="sort" data-sort="name" scope="col">ID</th>
+                                        <th class="sort" data-sort="id" scope="col">ID</th>
                                         
-                                        <th><?php echo app('translator')->get('translation.licensee'); ?></th>
-                                        <th><?php echo app('translator')->get('translation.subfolder'); ?></th>
-                                        <th><?php echo app('translator')->get('translation.version'); ?></th>
+                                        <th class="sort" data-sort="licensee" scope="col"><?php echo app('translator')->get('translation.licensee'); ?></th>
+                                        <th class="sort" data-sort="subfolder" scope="col"><?php echo app('translator')->get('translation.subfolder'); ?></th>
+                                        <th class="sort" data-sort="version" scope="col"><?php echo app('translator')->get('translation.version'); ?></th>
                                         <th><?php echo app('translator')->get('translation.date'); ?></th>
-                                        <th><?php echo app('translator')->get('translation.status'); ?></th>
+                                        <th class="sort" data-sort="status" scope="col"><?php echo app('translator')->get('translation.status'); ?></th>
                                         <th><?php echo app('translator')->get('translation.entries'); ?></th>
                                         <th><?php echo app('translator')->get('translation.action'); ?></th>
                                     </tr>
@@ -69,12 +67,12 @@ App::setLocale(session('lang'));
                                 <tbody class="list form-check-all">
                                     <?php $__empty_1 = true; $__currentLoopData = $assessments; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $index => $assessment): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
                                     <tr>
-                                        <td><?php echo e($assessment->id); ?></td>
-                                        <td><?php echo e($assessment->licensee->name_en ?? '—'); ?></td>
-                                        <td><?php echo e($assessment->licenseeTemplate->subfolder->name_en ?? '—'); ?></td>
-                                        <td><?php echo e($assessment->licenseeTemplate->version); ?></td>
+                                        <td class="id"><?php echo e($assessment->id); ?></td>
+                                        <td class="licensee"><?php echo e($assessment->licensee->name_en ?? '—'); ?></td>
+                                        <td class="subfolder"><?php echo e($assessment->licenseeTemplate->subfolder->name_en ?? '—'); ?></td>
+                                        <td class="version"><?php echo e($assessment->licenseeTemplate->version); ?></td>
                                         <td><?php echo e($assessment->assessment_date); ?></td>
-                                        <td>
+                                        <td class="status">
                                             <span class="badge <?php echo e($assessment->status === 'active' ? 'bg-success' : 'bg-secondary'); ?>">
                                                 <?php echo e(ucfirst($assessment->status)); ?>
 
@@ -87,13 +85,14 @@ App::setLocale(session('lang'));
                                             <a href="<?php echo e(route('assessments.show', $assessment->id)); ?>" class="btn btn-sm btn-info">
                                             <i class="ri-eye-fill"></i>
                                             </a>
-                                            <a href="#" class="edit-assessment-btn" data-id="<?php echo e($assessment->id); ?>" data-status="<?php echo e($assessment->status); ?>"><i
+                                            <a href="#" class="edit-assessment-btn btn btn-sm btn-info" data-id="<?php echo e($assessment->id); ?>" data-status="<?php echo e($assessment->status); ?>"><i
                                                                                 class="ri-pencil-fill align-bottom text-muted"></i></a>
-                                                                
+                                            <?php if(!in_array($assessment->status, ['completed','archived'])): ?>    
                                             <form action="<?php echo e(route('assessments.destroy', $assessment->id)); ?>" method="POST" style="display:inline" >
                                                 <?php echo csrf_field(); ?> <?php echo method_field('DELETE'); ?>
-                                                <a href="#" class="remove-item-btn" onclick="if(confirm('Delete this assessment?')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
+                                                <a href="#" class="remove-item-btn btn btn-sm btn-info" onclick="if(confirm('Delete this assessment?')) { this.closest('form').submit(); } return false;"><i class="ri-delete-bin-fill align-bottom text-muted"></i></a>
                                             </form>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
@@ -169,7 +168,7 @@ App::setLocale(session('lang'));
 <?php $__env->startSection('script'); ?>
 <script src="<?php echo e(URL::asset('build/libs/list.js/list.min.js')); ?>"></script>
 <script src="<?php echo e(URL::asset('build/libs/list.pagination.js/list.pagination.min.js')); ?>"></script>
-<script src="<?php echo e(URL::asset('build/js/pages/crm-companies.init.js')); ?>"></script>
+<script src="<?php echo e(URL::asset('build/js/pages/crm-assessments.init.js')); ?>"></script>
 <script src="<?php echo e(URL::asset('build/libs/sweetalert2/sweetalert2.min.js')); ?>"></script>
 <script src="<?php echo e(URL::asset('build/js/app.js')); ?>"></script>
 <script>
@@ -213,7 +212,10 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(err => console.error('Error:', err));
     });
+
 });
+
+
 </script>
 <?php $__env->stopSection(); ?>
 
