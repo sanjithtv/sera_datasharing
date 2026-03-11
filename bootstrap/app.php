@@ -72,7 +72,26 @@ return Application::configure(basePath: dirname(__DIR__))
         App\Providers\SiteConfigurationServiceProvider::class,
     ])
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->renderable(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, $request) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'The uploaded file exceeds the 100MB size limit.',
+                ], 413);
+            }
+            return back()->with('error', 'The uploaded file exceeds the 100MB size limit.');
+        });
+
+        // Optional: Catch timeouts if they manifest as fatal errors in Symfony
+        $exceptions->renderable(function (\Symfony\Component\ErrorHandler\Error\FatalError $e, $request) {
+            if (str_contains($e->getMessage(), 'Maximum execution time')) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'message' => 'The request timed out after 3 minutes.',
+                    ], 408);
+                }
+                return back()->with('error', 'The request timed out after 3 minutes. Please try again.');
+            }
+        });
     })->create();
 
 /*

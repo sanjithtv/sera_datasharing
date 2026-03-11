@@ -15,7 +15,8 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        // $schedule->command('inspire')->hourly();
+        $schedule->command('app:clean-temp-uploads --days=1')->daily();
+        $schedule->command('db:optimize-tables')->dailyAt('02:00');
     }
 
     /**

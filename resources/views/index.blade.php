@@ -239,9 +239,7 @@ App::setLocale(session('lang'));
                                                             {{ ucfirst($assessment->status) }}
                                                         </span>
                                                     </td>
-                                                    <td>{{ $assessment->masterData
-                ->unique(fn ($row) => $row->entry_counter . '-' . $row->template_sheet_id)
-                ->count() }}</td>
+                                                    <td>{{ $assessment->imported_rows }}</td>
                                                 </tr>
                                             @endforeach    
 
