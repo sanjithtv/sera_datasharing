@@ -50,9 +50,9 @@ App::setLocale(session('lang'));
 
                          <form action="{{ route('assessments.upload', $assessment->id) }}" method="POST" enctype="multipart/form-data">
                             @csrf
-                            <div class="mb-3">
-                                <label>{{ __('Choose Excel File (.xlsx / .csv)') }}</label>
-                                <input type="file" name="file" class="form-control" required>
+                             <div class="mb-3">
+                                <label>{{ __('Choose Excel File (.xlsx / .csv / .txt)') }}</label>
+                                <input type="file" name="file" class="form-control" accept=".xlsx,.csv,.txt" required>
                             </div>
                              <input type="hidden" name="assessment_id" value="{{ $assessment->id }}">
                             <input type="hidden" name="licensee_id" value="{{ $assessment->licensee_id }}">
@@ -96,12 +96,23 @@ document.addEventListener('DOMContentLoaded', function() {
         let limit = 0;
         let typeLabel = '';
 
-        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        if (fileName.endsWith('.xlsx')) {
             limit = 20;
             typeLabel = 'Excel';
         } else if (fileName.endsWith('.csv') || fileName.endsWith('.txt')) {
             limit = 2048; // 2GB
             typeLabel = 'CSV/Text';
+        } else {
+            // Reject other extensions (like .xlsb, .xls, etc.)
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Unsupported File Format',
+                text: 'Only .xlsx, .csv, and .txt files are supported. Please convert your file to a supported format.',
+                confirmButtonClass: 'btn btn-primary w-xs mt-2',
+                buttonsStyling: false
+            });
+            return false;
         }
 
         if (limit > 0 && fileSize > limit) {

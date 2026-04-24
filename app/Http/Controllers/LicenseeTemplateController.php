@@ -140,6 +140,40 @@ class LicenseeTemplateController extends Controller
     }
 
     /**
+     * Add new sheet to existing template
+     */
+    public function storeSheet(Request $request, $templateId)
+    {
+        $validated = $request->validate([
+            'sheet_name' => 'required|string|max:50',
+        ]);
+
+        LicenseeTemplateSheet::create([
+            'template_id' => $templateId,
+            'sheet_name' => $validated['sheet_name'],
+            'status' => 1,
+        ]);
+
+        return back()->with('success', 'Sheet added successfully.');
+    }
+
+    /**
+     * Delete a template sheet only if it has no keys
+     */
+    public function deleteSheet($sheetId)
+    {
+        $sheet = LicenseeTemplateSheet::withCount('keys')->findOrFail($sheetId);
+
+        if ($sheet->keys_count > 0) {
+            return back()->with('error', 'Cannot delete sheet because it contains keys.');
+        }
+
+        $sheet->delete();
+
+        return back()->with('success', 'Sheet deleted successfully.');
+    }
+
+    /**
      * Delete a template or its keys
      */
     public function destroy(LicenseeTemplate $licenseeTemplate)

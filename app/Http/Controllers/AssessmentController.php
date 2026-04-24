@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\IngestionUpsertHelper;
 use App\Jobs\ProcessAssessmentImport;
 use App\Jobs\ProcessAssessmentInitialImport;
 use App\Models\Assessment;
@@ -513,13 +514,13 @@ public function importData(Request $request, Assessment $assessment)
         // Dispatch background finalize job
         \App\Jobs\FinalizeImportJob::dispatch($assessment->id);
 
-        // Success message is already queued in session by update() or manual, 
+        // Success message is already queued in session by update() or manual,
         // but we close it here to be safe before redirect.
         session_write_close();
 
-        return redirect()
-            ->route('assessments.show', $assessment->id)
-            ->with('success', 'Final data import started in background. The page will update once complete.');
+        // Redirect to the processing view so the user sees the progress bar and
+        // the ingestion-summary modal when FinalizeImportJob finishes.
+        return view('modules.assessments.processing', compact('assessment'));
 
     } catch (\Exception $e) {
         Log::error('Final import dispatch failed', ['error' => $e->getMessage()]);
@@ -1093,119 +1094,189 @@ public function storeManualSheet(Request $request)
     $request->validate([
         'assessment_id' => 'required|exists:sr_licensee_assessments,id',
         'sheet_id'      => 'required|exists:sr_licensee_template_sheets,id',
-        'sheets'          => 'required|array',
+        'sheets'        => 'required|array',
     ]);
 
-    $sheet = LicenseeTemplateSheet::with('keys')->findOrFail($request->sheet_id);
-    $sheetId = $request->sheet_id;
-    $sheetData = $request->input("sheets.$sheetId");
+    $sheetId    = (int) $request->sheet_id;
+    $assessment = Assessment::findOrFail($request->assessment_id);
+    $sheet      = LicenseeTemplateSheet::with('keys')->findOrFail($sheetId);
+    $sheetData  = $request->input("sheets.$sheetId");
 
     if (!$sheetData) {
         return back()->withErrors(['msg' => 'No data found for this sheet.']);
     }
-    $assessment = Assessment::findOrFail($request->assessment_id);
 
+    // 1. Per-type validation — collect ALL errors across rows, fail fast with a full list.
+    $validationErrors = $this->validateManualSheetRows($sheet, $sheetData);
+    if (!empty($validationErrors)) {
+        return back()->withErrors($validationErrors)->withInput();
+    }
 
+    // 2. Build helper inputs once. keysMap shape: short_code => [id, type, mandatory, ...].
+    $keysMap = [];
+    foreach ($sheet->keys as $key) {
+        $keysMap[$key->short_code] = $key->toArray();
+    }
+    $mandatoryIds = IngestionUpsertHelper::mandatoryKeyIds($keysMap);
+    $existingMap  = IngestionUpsertHelper::preloadExistingRecords($assessment->id, $sheetId, $mandatoryIds);
+
+    // 3. Pre-fetch existing row hashes for this sheet so identical re-submissions short-circuit
+    //    (same contract as FinalizeImportJob — matches dedup semantics across entry paths).
+    $existingHashes = DB::table('sr_assessment_row_hashes')
+        ->where('assessment_id', $assessment->id)
+        ->where('sheet_id', $sheetId)
+        ->pluck('row_hash')
+        ->flip()
+        ->toArray();
+
+    $inserted = 0; $updated = 0; $duplicate = 0; $skipped = 0;
+    $skippedDetails = [];
+
+    DB::transaction(function () use (
+        $assessment, $sheet, $sheetId, $sheetData, $keysMap,
+        &$existingMap, &$existingHashes,
+        &$inserted, &$updated, &$duplicate, &$skipped, &$skippedDetails
+    ) {
+        foreach ($sheetData as $entryCounter => $row) {
+            // Build [short_code => value] payload for the helper.
+            // Auto-counter columns (mandatory==3) get their next value computed HERE, before
+            // signature build, so an identical re-submission reuses the same auto-counter
+            // (classifyRow will see the same signature → noop) instead of burning a new one.
+            $rowByShortCode = [];
+            foreach ($sheet->keys as $key) {
+                $value = $row[$key->id] ?? null;
+                if ((int) ($key->mandatory ?? 0) === 3 && ($value === null || $value === '')) {
+                    $maxAuto = (int) DB::table('sr_licensee_assessment_master_data')
+                        ->where('assessment_id', $assessment->id)
+                        ->where('template_sheet_id', $sheetId)
+                        ->where('template_key_id', $key->id)
+                        ->max('template_key_value');
+                    $value = $maxAuto > 0 ? ($maxAuto + 1) : 1;
+                }
+                $rowByShortCode[$key->short_code] = $value;
+            }
+
+            // 3a. Row-hash fast-path — exact re-submission.
+            $rowHash = md5(json_encode($rowByShortCode, JSON_UNESCAPED_UNICODE));
+            if (isset($existingHashes[$rowHash])) {
+                $duplicate++;
+                continue;
+            }
+
+            // 3b. Signature-based classify (insert / update / noop / skip).
+            $decision = IngestionUpsertHelper::classifyRow(
+                $rowByShortCode, $keysMap, $existingMap,
+                [
+                    'assessment_id' => $assessment->id,
+                    'licensee_id'   => $assessment->licensee_id,
+                    'sheet_id'      => $sheetId,
+                    'entry_counter' => (int) $entryCounter,
+                ]
+            );
+
+            switch ($decision['action']) {
+                case 'insert':
+                    if (!empty($decision['rows'])) {
+                        AssessmentMasterData::insert($decision['rows']);
+                    }
+                    $inserted++;
+                    break;
+                case 'update':
+                    IngestionUpsertHelper::applyUpdates($assessment->id, $sheetId, $decision['updates']);
+                    $updated++;
+                    break;
+                case 'noop':
+                    $duplicate++;
+                    break;
+                case 'skip-no-key':
+                    $skipped++;
+                    $skippedDetails[] = "Row {$entryCounter}: missing mandatory key value(s).";
+                    continue 2;
+            }
+
+            // Persist hash for future dedup (same table the bulk path writes).
+            DB::table('sr_assessment_row_hashes')->insertOrIgnore([
+                'assessment_id' => $assessment->id,
+                'sheet_id'      => $sheetId,
+                'row_hash'      => $rowHash,
+                'created_at'    => now(),
+            ]);
+            $existingHashes[$rowHash] = true;
+        }
+
+        // 4. Update assessment counters (mirrors FinalizeImportJob's completion bump).
+        $importedTotal = DB::table('sr_licensee_assessment_master_data')
+            ->where('assessment_id', $assessment->id)
+            ->select('template_sheet_id', 'entry_counter')
+            ->distinct()->get()->count();
+
+        DB::table('sr_licensee_assessments')->where('id', $assessment->id)->update([
+            'imported_rows'  => $importedTotal,
+            'inserted_rows'  => DB::raw("inserted_rows + {$inserted}"),
+            'updated_rows'   => DB::raw("updated_rows + {$updated}"),
+            'duplicate_rows' => DB::raw("duplicate_rows + {$duplicate}"),
+            'skipped_rows'   => DB::raw("skipped_rows + {$skipped}"),
+        ]);
+    });
+
+    $summary = "Sheet saved. inserted={$inserted}, updated={$updated}, duplicate={$duplicate}, skipped={$skipped}";
+    $response = back()->with('success', $summary);
+    if (!empty($skippedDetails)) {
+        $response = $response->withErrors($skippedDetails);
+    }
+    return $response;
+}
+
+/**
+ * Validate every cell in every submitted row against the template key's declared type.
+ * Returns an array of human-readable error messages (empty = all valid).
+ * Kept in a private helper so storeManualSheet stays readable.
+ */
+private function validateManualSheetRows($sheet, array $sheetData): array
+{
+    $errors = [];
     foreach ($sheetData as $entryCounter => $row) {
-
         foreach ($sheet->keys as $key) {
-
             $value = $row[$key->id] ?? null;
-
-            // ✅ DYNAMIC VALIDATION BASED ON TYPE
-            if ($value !== null && $value !== '') {
-
-                switch ($key->type) {
-
-                    case 'number':
-                        if (!is_numeric($value)) {
-                            return back()->withErrors([
-                                "Invalid number for {$key->desc_en} (Row $entryCounter)"
-                            ]);
-                        }
-                        break;
-
-                    case 'number_percentage':
-                        if (!preg_match('/^\d+(\.\d+)?%$/', $value)) {
-                            return back()->withErrors([
-                                "Invalid percentage for {$key->desc_en}. Use format like 25% or 10.5%"
-                            ]);
-                        }
-                        break;
-
-                    case 'date':
-                        if (!strtotime($value)) {
-                            return back()->withErrors([
-                                "Invalid date for {$key->desc_en}"
-                            ]);
-                        }
-                        break;
-
-                    case 'datetime':
-                        if (!strtotime($value)) {
-                            return back()->withErrors([
-                                "Invalid datetime for {$key->desc_en}"
-                            ]);
-                        }
-                        break;
-
-                    case 'time':
-                        if (!preg_match('/^\d{2}:\d{2}$/', $value)) {
-                            return back()->withErrors([
-                                "Invalid time for {$key->desc_en}"
-                            ]);
-                        }
-                        break;
-
-                    case 'select':
-                        $options = array_map('trim', explode(',', $key->options ?? ''));
-                        if (!in_array($value, $options)) {
-                            return back()->withErrors([
-                                "Invalid option for {$key->desc_en}"
-                            ]);
-                        }
-                        break;
-                }
+            if ($value === null || $value === '') {
+                continue; // empty values handled by mandatory check elsewhere
             }
-            $maxEntryCounter = AssessmentMasterData::where('assessment_id', $assessment->id)->max('entry_counter');
-            if($maxEntryCounter<=0){
-                $maxEntryCounter = 1;
+            switch ($key->type) {
+                case 'number':
+                    if (!is_numeric($value)) {
+                        $errors[] = "Invalid number for {$key->desc_en} (Row {$entryCounter})";
+                    }
+                    break;
+                case 'number_percentage':
+                    if (!preg_match('/^\d+(\.\d+)?%$/', $value)) {
+                        $errors[] = "Invalid percentage for {$key->desc_en} (Row {$entryCounter}). Use format like 25% or 10.5%";
+                    }
+                    break;
+                case 'date':
+                    if (!strtotime($value)) {
+                        $errors[] = "Invalid date for {$key->desc_en} (Row {$entryCounter})";
+                    }
+                    break;
+                case 'datetime':
+                    if (!strtotime($value)) {
+                        $errors[] = "Invalid datetime for {$key->desc_en} (Row {$entryCounter})";
+                    }
+                    break;
+                case 'time':
+                    if (!preg_match('/^\d{2}:\d{2}$/', $value)) {
+                        $errors[] = "Invalid time for {$key->desc_en} (Row {$entryCounter})";
+                    }
+                    break;
+                case 'select':
+                    $options = array_map('trim', explode(',', $key->options ?? ''));
+                    if (!in_array($value, $options)) {
+                        $errors[] = "Invalid option for {$key->desc_en} (Row {$entryCounter})";
+                    }
+                    break;
             }
-            // ✅ SAVE INTO MASTER DATA
-            if($key->mandatory == 3){
-
-                $maxAutoCounter = AssessmentMasterData::where('assessment_id', $assessment->id)->where('licensee_id', $assessment->licensee_id)->where('template_sheet_id', $sheetId)->where('template_key_id', $key->id)->max('template_key_value');
-                if($maxAutoCounter>0){
-                    $maxAutoCounter++;
-                }else{
-                    $maxAutoCounter = 1;
-                }
-                AssessmentMasterData::create([
-                    'licensee_id' => $assessment->licensee_id,
-                    'assessment_id' => $assessment->id,
-                    'template_sheet_id' => $sheetId,
-                    'template_key_id' => $key->id,
-                    'template_key_value' => $maxAutoCounter,
-                    'type' => $key->type,
-                    'entry_counter' => $maxEntryCounter,
-                ]);
-            }else{
-                AssessmentMasterData::create([
-                    'licensee_id' => $assessment->licensee_id,
-                    'assessment_id' => $assessment->id,
-                    'template_sheet_id' => $sheetId,
-                    'template_key_id' => $key->id,
-                    'template_key_value' => $value,
-                    'type' => $key->type,
-                    'entry_counter' => $maxEntryCounter,
-                ]);
-            }
-
-
-
         }
     }
-    return back()->with('success', 'Sheet data saved successfully.');
+    return $errors;
 }
 
 
@@ -1513,7 +1584,11 @@ private function exportToCsv($assessment, $sheet)
             'total_rows'     => (int)$rawAssessment->total_rows,
             'processed_rows' => (int)$rawAssessment->processed_rows,
             'finalized_rows' => (int)$rawAssessment->finalized_rows,
+            'imported_rows'  => (int)($rawAssessment->imported_rows ?? 0),
+            'inserted_rows'  => (int)($rawAssessment->inserted_rows ?? 0),
+            'updated_rows'   => (int)($rawAssessment->updated_rows ?? 0),
             'duplicate_rows' => (int)($rawAssessment->duplicate_rows ?? 0),
+            'skipped_rows'   => (int)($rawAssessment->skipped_rows ?? 0),
             'percentage'     => $this->calculatePercentageFromRaw($rawAssessment),
         ];
 

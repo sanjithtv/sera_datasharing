@@ -25,9 +25,19 @@ App::setLocale(session('lang'));
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="search-box">
-                                <input type="text" class="form-control search" id="tableSearch" placeholder="@lang('translation.search')...">
+                                <input type="text" class="form-control custom-search" id="searchText" placeholder="@lang('translation.search')...">
                                 <i class="ri-search-line search-icon"></i>
                             </div>
+                        </div>
+                        <div class="col-md-2">
+                             <select class="form-select" id="statusFilter">
+                                 <option value="all">All Statuses</option>
+                                 <option value="active">Active</option>
+                                 <option value="draft">Draft</option>
+                                 <option value="processing">Processing</option>
+                                 <option value="parsed">Parsed</option>
+                                 <option value="completed">Completed</option>
+                             </select>
                         </div>
                         <div class="col-md-auto ms-auto">
                             <div class="d-flex align-items-center gap-2">
@@ -68,7 +78,7 @@ App::setLocale(session('lang'));
                                     @forelse ($assessments as $index => $assessment)
                                     <tr>
                                         <td class="id">{{ $assessment->id }}</td>
-                                        <td class="licensee">{{ $assessment->licensee->name_en ?? '—' }}</td>
+                                        <td class="licensee" data-licensee="{{ $assessment->licensee->name_en ?? '' }}">{{ $assessment->licensee->name_en ?? '—' }}</td>
                                         <td class="subfolder">{{ $assessment->licenseeTemplate->subfolder->name_en ?? '—' }}</td>
                                         <td class="version">{{ $assessment->licenseeTemplate->version }}</td>
                                         <td>{{ $assessment->assessment_date }}</td>
@@ -97,9 +107,7 @@ App::setLocale(session('lang'));
                                     @endforeach
                                 </tbody>
                             </table>
-                            <div class="mt-3">
-                                {{ $assessments->links() }}
-                            </div>
+
                             <div class="noresult" style="display: none">
                                 <div class="text-center">
                                     <lord-icon src="https://cdn.lordicon.com/msoeawqm.json" trigger="loop"
@@ -168,11 +176,58 @@ App::setLocale(session('lang'));
 @section('script')
 <script src="{{ URL::asset('build/libs/list.js/list.min.js') }}"></script>
 <script src="{{ URL::asset('build/libs/list.pagination.js/list.pagination.min.js') }}"></script>
-<script src="{{ URL::asset('build/js/pages/crm-assessments.init.js') }}"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // List.js initialization
+    var options = {
+        valueNames: [
+            "id",
+            { name: 'licensee', attr: 'data-licensee' },
+            "subfolder",
+            "version",
+            "status",
+        ],
+        page: 10,
+        pagination: true
+    };
+
+    // Initialize the list
+    var assessmentList = new List("companyList", options);
+
+    var statusFilter = document.getElementById("statusFilter");
+    var searchInput = document.getElementById("searchText");
+
+    function filterData() {
+        var statusVal = statusFilter ? statusFilter.value.toLowerCase() : 'all';
+        var searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+        assessmentList.filter(function (item) {
+            var itemStatus = (item.values().status || '').toString().toLowerCase();
+            var licenseeField = (item.values().licensee || '').toString().toLowerCase();
+            var versionField = (item.values().version || '').toString().toLowerCase();
+
+            // Status match
+            var matchStatus = (statusVal === 'all') || (itemStatus.indexOf(statusVal) !== -1);
+
+            // Search match (Licensee OR Version)
+            var matchSearch = true;
+            if (searchVal !== '') {
+                matchSearch = (licenseeField.indexOf(searchVal) !== -1 || versionField.indexOf(searchVal) !== -1);
+            }
+
+            return matchStatus && matchSearch;
+        });
+    }
+
+    if (statusFilter) statusFilter.addEventListener("change", filterData);
+    if (searchInput) {
+        searchInput.addEventListener("keyup", function () {
+            assessmentList.search(''); 
+            filterData();
+        });
+    }
     const editModal = new bootstrap.Modal(document.getElementById('editAssessmentModal'));
 
     // Open modal and fill form

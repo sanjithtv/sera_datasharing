@@ -28,6 +28,13 @@ App::setLocale(session('lang'));
                 <div class="card-body">
                     <div>
 
+    @if(session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+        <div class="alert alert-danger">{{ session('error') }}</div>
+    @endif
+
     {{-- Template Update Form --}}
     <form method="POST" action="{{ route('forms.licensee_templates.update') }}">
         @csrf
@@ -87,6 +94,27 @@ App::setLocale(session('lang'));
 
     <hr>
 
+    <div class="row">
+        <div class="col-md-12">
+            {{-- Add New Sheet --}}
+            <h4 class="mt-4">@lang('translation.add_new_sheet')</h4>
+            <form method="POST" action="{{ route('forms.licensee_templates.sheets.store', $licenseeTemplate->id) }}">
+                @csrf
+                <div class="row align-items-end">
+                    <div class="col-md-4">
+                        <label>@lang('translation.sheet_name')</label>
+                        <input name="sheet_name" class="form-control" placeholder="e.g. Sheet 2" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-secondary mt-3">@lang('translation.add_sheet')</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <hr>
+
     {{-- Add New Key --}}
     <h4 class="mt-4">@lang('translation.template_keys')</h4>
     <form method="POST" action="{{ route('forms.licensee_templates.keys.store', $licenseeTemplate->id) }}">
@@ -119,6 +147,7 @@ App::setLocale(session('lang'));
                 <select name="mandatory" class="form-select">
                     <option value="1">Yes</option>
                     <option value="0">No</option>
+                    <option value="3">Auto</option>
                 </select>
             </div>
             <div class="col-md-2">
@@ -137,26 +166,27 @@ App::setLocale(session('lang'));
         <button class="btn btn-primary mt-3">@lang('translation.add_key')</button>
     </form>
 
-    {{-- Table of Keys --}}
-    <table class="table table-bordered mt-4" id="keysTable">
-        <thead class="table-light">
-            <tr>
-                <th>@lang('translation.code')</th>
-                <th>EN</th>
-                <th>AR</th>
-                <th>@lang('translation.mandatory')</th>
-                <th>@lang('translation.type')</th>
-                <th>@lang('translation.action')</th>
-            </tr>
-        </thead>
+    <div class="mt-4">
         @php
         $groupedKeys = $templateKeys->groupBy('sheet_id');
         @endphp
-        <tbody>
-            @foreach($groupedKeys as $sheetId => $keys)
+
+        @foreach($sheets as $sheetId => $sheetName)
         <div class="card mb-4 shadow-sm">
-            <div class="card-header bg-light fw-bold">
-                Sheet: {{ $keys->first()->sheet->sheet_name ?? 'Unknown Sheet' }}
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Sheet: {{ $sheetName }}</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-primary">{{ $groupedKeys->has($sheetId) ? $groupedKeys[$sheetId]->count() : 0 }} Keys</span>
+                    @if(!$groupedKeys->has($sheetId) || $groupedKeys[$sheetId]->count() == 0)
+                        <form method="POST" action="{{ route('forms.licensee_templates.sheets.delete', $sheetId) }}" style="display:inline" onsubmit="return confirm('Are you sure you want to delete this empty sheet?')">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Empty Sheet">
+                                <i class="ri-delete-bin-line"></i>
+                            </button>
+                        </form>
+                    @endif
+                </div>
             </div>
 
             <div class="card-body table-responsive">
@@ -172,57 +202,63 @@ App::setLocale(session('lang'));
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($keys as $key)
+                        @if($groupedKeys->has($sheetId))
+                            @foreach($groupedKeys[$sheetId] as $key)
+                                <tr>
+                                    <form method="POST" action="{{ route('forms.licensee_templates.keys.update', $key->id) }}">
+                                        @csrf
+                                        @method('PUT')
+
+                                        <td>
+                                            <input type="text" name="short_code" value="{{ $key->short_code }}" class="form-control" required>
+                                        </td>
+
+                                        <td>
+                                            <input type="text" name="desc_en" value="{{ $key->desc_en }}" class="form-control" required>
+                                        </td>
+
+                                        <td>
+                                            <input type="text" name="desc_ar" value="{{ $key->desc_ar }}" class="form-control">
+                                        </td>
+
+                                        <td>
+                                            <select name="mandatory" class="form-select">
+                                                <option value="1" {{ $key->mandatory == '1' ? 'selected' : '' }}>Yes</option>
+                                                <option value="0" {{ $key->mandatory == '0' ? 'selected' : '' }}>No</option>
+                                                <option value="3" {{ $key->mandatory == '3' ? 'selected' : '' }}>Auto</option>
+                                            </select>
+                                        </td>
+
+                                        <td>
+                                            <select name="type" class="form-select">
+                                                <option value="text" {{ $key->type == 'text' ? 'selected' : '' }}>Text</option>
+                                                <option value="number" {{ $key->type == 'number' ? 'selected' : '' }}>Number</option>
+                                                <option value="select" {{ $key->type == 'select' ? 'selected' : '' }}>Select</option>
+                                                <option value="number_percentage" {{ $key->type == 'number_percentage' ? 'selected' : '' }}>Number Percentage</option>
+                                                <option value="date" {{ $key->type == 'date' ? 'selected' : '' }}>Date</option>
+                                                <option value="datetime" {{ $key->type == 'datetime' ? 'selected' : '' }}>Datetime</option>
+                                                <option value="time" {{ $key->type == 'time' ? 'selected' : '' }}>Time</option>
+                                            </select>
+                                        </td>
+
+                                        <td>
+                                            <button type="submit" class="btn btn-sm btn-success">Update</button>
+                                            <button type="button" class="btn btn-sm btn-danger delete-key-btn" data-id="{{ $key->id }}">Delete</button>
+                                        </td>
+                                    </form>
+                                </tr>
+                            @endforeach
+                        @else
                             <tr>
-                                <form method="POST" action="{{ route('forms.licensee_templates.keys.update', $key->id) }}">
-                                    @csrf
-                                    @method('PUT')
-
-                                    <td>
-                                        <input type="text" name="short_code" value="{{ $key->short_code }}" class="form-control" required>
-                                    </td>
-
-                                    <td>
-                                        <input type="text" name="desc_en" value="{{ $key->desc_en }}" class="form-control" required>
-                                    </td>
-
-                                    <td>
-                                        <input type="text" name="desc_ar" value="{{ $key->desc_ar }}" class="form-control">
-                                    </td>
-
-                                    <td>
-                                        <select name="mandatory" class="form-select">
-                                            <option value="1" {{ $key->mandatory == '1' ? 'selected' : '' }}>Yes</option>
-                                            <option value="0" {{ !$key->mandatory ? 'selected' : '' }}>No</option>
-                                            <option value="3" {{ $key->mandatory == '3' ? 'selected' : '' }}>Auto</option>
-                                        </select>
-                                    </td>
-
-                                    <td>
-                                        <select name="type" class="form-select">
-                                            <option value="text" {{ $key->type == 'text' ? 'selected' : '' }}>Text</option>
-                                            <option value="number" {{ $key->type == 'number' ? 'selected' : '' }}>Number</option>
-                                            <option value="select" {{ $key->type == 'select' ? 'selected' : '' }}>Select</option>
-                                            <option value="number_percentage" {{ $key->type == 'number_percentage' ? 'selected' : '' }}>Number Percentage</option>
-                                            <option value="date" {{ $key->type == 'date' ? 'selected' : '' }}>Date</option>
-                                            <option value="datetime" {{ $key->type == 'datetime' ? 'selected' : '' }}>Datetime</option>
-                                            <option value="time" {{ $key->type == 'time' ? 'selected' : '' }}>Time</option>
-                                        </select>
-                                    </td>
-
-                                    <td>
-                                        <button class="btn btn-sm btn-success">Update</button>
-                                    </td>
-                                </form>
+                                <td colspan="6" class="text-center text-muted">No keys found for this sheet.</td>
                             </tr>
-                        @endforeach
+                        @endif
                     </tbody>
                 </table>
             </div>
         </div>
-    @endforeach
-        </tbody>
-    </table>
+        @endforeach
+    </div>
 </div>
 
 

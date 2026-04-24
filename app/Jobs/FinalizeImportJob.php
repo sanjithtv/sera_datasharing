@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Helpers\IngestionUpsertHelper;
 use App\Models\Assessment;
 use App\Models\AssessmentMasterData;
 use App\Models\LicenseeTemplateKey;
@@ -46,6 +47,8 @@ class FinalizeImportJob implements ShouldQueue
             Log::emergency("FinalizeImportJob: BREADCRUMB 2 (count done)", ['total' => $totalRows]);
             $importedCount = 0;
             $skippedCount = 0;
+            $insertedCount = 0;
+            $updatedCount = 0;
 
             // ✅ Pre-fetch ALL keys for this template
             $allKeys = LicenseeTemplateKey::where('licensee_template_id', $assessment->licensee_template_id)
@@ -88,6 +91,10 @@ class FinalizeImportJob implements ShouldQueue
             $lastId         = 0;
             $chunkSize      = 500;
 
+            // Upsert: cached signature maps per sheet. Lazily populated on first sighting of each sheet.
+            $existingMapsBySheet = [];
+            $mandatoryIdsBySheet = [];
+
             while (true) {
                 DB::beginTransaction();
 
@@ -115,6 +122,7 @@ class FinalizeImportJob implements ShouldQueue
                     ->toArray();
 
                 $insertBatch = [];
+                $updateBatch = [];
                 $hashBatch   = [];
 
                 foreach ($rows as $row) {
@@ -131,7 +139,7 @@ class FinalizeImportJob implements ShouldQueue
                         continue;
                     }
 
-                    // 2. Duplicate Check
+                    // 2. Fast-path: identical-row hash dedup (short-circuits the helper).
                     $sheetHashes = $existingHashesMap[$row->sheet_id] ?? [];
                     if (isset($sheetHashes[$row->row_hash])) {
                         $duplicateCount++;
@@ -141,22 +149,57 @@ class FinalizeImportJob implements ShouldQueue
                     $rowData = is_array($row->row_data) ? $row->row_data : json_decode($row->row_data, true);
                     $keysMap = $keysMaps[$row->sheet_id] ?? [];
 
-                    foreach ($rowData as $col => $value) {
-                        $templateKey = $keysMap[$col] ?? null;
-                        if ($templateKey) {
-                            $insertBatch[] = [
-                                'licensee_id'        => $row->licensee_id,
-                                'assessment_id'      => $row->assessment_id,
-                                'template_sheet_id'  => $row->sheet_id,
-                                'template_key_id'    => $templateKey['id'],
-                                'template_key_value' => $value,
-                                'type'               => $templateKey['type'],
-                                'entry_counter'      => $row->row_index,
-                            ];
-                        }
+                    // 2a. Lazy-load the existing-record signature map for this sheet (one query per sheet).
+                    if (!isset($existingMapsBySheet[$row->sheet_id])) {
+                        $mandatoryIdsBySheet[$row->sheet_id] = IngestionUpsertHelper::mandatoryKeyIds($keysMap);
+                        $existingMapsBySheet[$row->sheet_id] = IngestionUpsertHelper::preloadExistingRecords(
+                            $assessment->id,
+                            $row->sheet_id,
+                            $mandatoryIdsBySheet[$row->sheet_id]
+                        );
                     }
 
-                    // 3. Mark hash as "seen" both in memory for this chunk and for DB persistence
+                    $decision = IngestionUpsertHelper::classifyRow(
+                        $rowData,
+                        $keysMap,
+                        $existingMapsBySheet[$row->sheet_id],
+                        [
+                            'assessment_id' => $row->assessment_id,
+                            'licensee_id'   => $row->licensee_id,
+                            'sheet_id'      => $row->sheet_id,
+                            'entry_counter' => $row->row_index,
+                        ]
+                    );
+
+                    switch ($decision['action']) {
+                        case 'insert':
+                            foreach ($decision['rows'] as $cell) {
+                                $insertBatch[] = $cell;
+                            }
+                            $importedCount++;
+                            $insertedCount++;
+                            break;
+                        case 'update':
+                            foreach ($decision['updates'] as $u) {
+                                $updateBatch[] = $u;
+                            }
+                            $importedCount++; // treat update as re-imported so imported_rows stays accurate
+                            $updatedCount++;
+                            break;
+                        case 'noop':
+                            $duplicateCount++;
+                            break;
+                        case 'skip-no-key':
+                            $skippedRows[] = [
+                                'row_index' => $row->row_index,
+                                'errors'    => ['_upsert' => ['Missing mandatory key value(s) — cannot upsert.']],
+                            ];
+                            $skippedCount++;
+                            continue 2;
+                    }
+
+                    // 3. Mark hash as "seen" both in memory for this chunk and for DB persistence.
+                    //    Covers insert AND update so an identical re-upload of the updated row fast-paths.
                     $existingHashesMap[$row->sheet_id][$row->row_hash] = $row->row_hash;
                     $hashBatch[] = [
                         'assessment_id' => $assessment->id,
@@ -164,13 +207,21 @@ class FinalizeImportJob implements ShouldQueue
                         'row_hash'      => $row->row_hash,
                         'created_at'    => now()
                     ];
-
-                    $importedCount++;
                 }
 
                 if (!empty($insertBatch)) {
                     foreach (array_chunk($insertBatch, 5000) as $chunk) {
                         AssessmentMasterData::insert($chunk);
+                    }
+                }
+
+                if (!empty($updateBatch)) {
+                    $updatesBySheet = [];
+                    foreach ($updateBatch as $u) {
+                        $updatesBySheet[(int) $u['sheet_id']][] = $u;
+                    }
+                    foreach ($updatesBySheet as $sid => $us) {
+                        IngestionUpsertHelper::applyUpdates($assessment->id, $sid, $us);
                     }
                 }
 
@@ -194,7 +245,7 @@ class FinalizeImportJob implements ShouldQueue
                 ]);
 
                 // Destroy variables generated in this chunk to prevent memory fragmentation
-                unset($chunkHashes, $insertBatch, $hashBatch, $rows);
+                unset($chunkHashes, $insertBatch, $updateBatch, $hashBatch, $rows);
                 
                 // Force memory garbage collection every 500 iterations to avoid OS SIGKILL (OOM)
                 if (function_exists('gc_collect_cycles')) {
@@ -231,6 +282,8 @@ class FinalizeImportJob implements ShouldQueue
                 ->update([
                     'status'         => 'completed',
                     'imported_rows'  => $actualImportedDbCount,
+                    'inserted_rows'  => $insertedCount,
+                    'updated_rows'   => $updatedCount,
                     'skipped_rows'   => \Illuminate\Support\Facades\DB::raw("skipped_rows + $skippedCount"),
                     'duplicate_rows' => \Illuminate\Support\Facades\DB::raw("duplicate_rows + $duplicateCount"),
                 ]);

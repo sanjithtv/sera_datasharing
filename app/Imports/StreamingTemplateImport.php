@@ -85,16 +85,6 @@ class StreamingTemplateImport
             $normSheetName = strtolower(preg_replace('/\s+/', ' ', trim($sheetName)));
             $sheetId = $this->isCsv ? reset($this->sheetMapping) : ($normalizedMapping[$normSheetName] ?? null);
 
-            if (!$sheetId && count($this->sheetMapping) === 1) {
-                $fallbackId = reset($this->sheetMapping);
-                if (!in_array($fallbackId, $this->namePerSheet ?? [])) {
-                    $sheetId = $fallbackId;
-                    Log::warning("Sheet '{$sheetName}' not in mapping — falling back to the only available mapped sheet (single-sheet fallback).");
-                } else {
-                    Log::warning("Skipping sheet '{$sheetName}': fallback ID already used by another sheet in this workbook.");
-                }
-            }
-
             if (!$sheetId || $sheetName === 'Master') {
                 Log::warning("Skipping sheet '{$sheetName}': no mapping found or it is the Master sheet.", [
                     'sheetMapping_keys' => array_keys($this->sheetMapping),
@@ -336,11 +326,16 @@ class StreamingTemplateImport
                 Log::warning("Sheet '{$sheetName}' {$reasonMsg}");
                 $this->canProceed = false;
 
-                $expectedCols = $keys->pluck('short_code')->toArray();
+                $expectedCols = $keys->pluck('short_code')->unique()->values()->toArray();
+
+                $expectedSheetName = array_search($sheetId, $this->sheetMapping);
+                $displaySheetName = ($expectedSheetName && strtolower(trim((string)$expectedSheetName)) !== strtolower(trim((string)$sheetName))) 
+                    ? "{$sheetName}' (mapped to '{$expectedSheetName}')"
+                    : $sheetName;
 
                 $this->errorsPerSheet[$sheetName][] = [
                     'type'    => 'empty_sheet',
-                    'message' => "The sheet '{$sheetName}' {$reasonMsg}",
+                    'message' => "The sheet '{$displaySheetName}' {$reasonMsg}",
                     'missing_columns' => $expectedCols
                 ];
 
@@ -353,7 +348,7 @@ class StreamingTemplateImport
                     'row_data'           => json_encode([]),
                     'validation_errors'  => json_encode([
                         '__empty_sheet' => [
-                            'message' => "The sheet '{$sheetName}' {$reasonMsg}",
+                            'message' => "The sheet '{$displaySheetName}' {$reasonMsg}",
                             'missing_columns' => $expectedCols
                         ]
                     ]),

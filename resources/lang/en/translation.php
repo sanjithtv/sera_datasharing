@@ -68,9 +68,12 @@ return [
     "template" => "Template",
     "template_keys" => "Template Keys",
     "update_template" => "Update Template",
+    "add_new_sheet" => "Add New Sheet",
+    "add_sheet" => "Add Sheet",
     "keys" => "Keys",
     "add_key" => "Add Key",
     "sheetname" => "Sheet Name",
+    "sheet_name" => "Sheet Name",
     "version" => "Version",
     "classification" => "Classification",
 

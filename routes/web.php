@@ -85,6 +85,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('licensee_templates/{licenseeTemplate}/edit', 'edit')->name('licensee_templates.edit'); 
         Route::put('licensee_templates/update', 'update')->name('licensee_templates.update'); 
         Route::get('licensee_templates/destroy', 'destroy')->name('licensee_templates.destroy'); 
+        Route::post('licensee_templates/{template}/sheets', 'storeSheet')->name('licensee_templates.sheets.store');
+        Route::delete('licensee_templates/sheets/{sheet}', 'deleteSheet')->name('licensee_templates.sheets.delete');
         Route::post('licensee_templates/{template}/keys',  'storeKey')->name('licensee_templates.keys.store');
         Route::put('licensee_templates/keys/{key}',  'updateKey')->name('licensee_templates.keys.update');
         Route::delete('licensee_templates/keys/{key}', [LicenseeTemplateController::class, 'deleteKey'])->name('licensee_templates.keys.delete'); 

@@ -27,8 +27,8 @@ App::setLocale(session('lang'));
                         </div>
                     </div>
 
-                    <h4 class="fw-bold mb-2">{{ __('Step 1: Staging Data') }}</h4>
-                    <p class="text-muted mb-4">
+                    <h4 class="fw-bold mb-2" id="stage-title">{{ __('Step 1: Staging Data') }}</h4>
+                    <p class="text-muted mb-4" id="stage-subtitle">
                         {{ __('We are reading your file and preparing it for review.') }}
                     </p>
 
@@ -70,9 +70,69 @@ App::setLocale(session('lang'));
             </div>
         </div>
     </div>
+
+    {{-- Ingestion Summary Modal (shown on completion, before redirect) --}}
+    <div class="modal fade" id="ingestionSummaryModal" tabindex="-1" aria-labelledby="ingestionSummaryModalLabel" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="ingestionSummaryModalLabel">
+                        <i class="ri-check-double-line me-1"></i> {{ __('Ingestion Complete') }}
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-3">{{ __('Here is the breakdown for this upload:') }}</p>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="ri-add-circle-line text-success me-1"></i> {{ __('Records added') }}</span>
+                            <span class="badge bg-success rounded-pill" id="summary-inserted">0</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="ri-refresh-line text-primary me-1"></i> {{ __('Records updated') }}</span>
+                            <span class="badge bg-primary rounded-pill" id="summary-updated">0</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="ri-file-copy-line text-warning me-1"></i> {{ __('Duplicates skipped (no change)') }}</span>
+                            <span class="badge bg-warning text-dark rounded-pill" id="summary-duplicate">0</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="ri-error-warning-line text-danger me-1"></i> {{ __('Skipped (validation / missing key)') }}</span>
+                            <span class="badge bg-danger rounded-pill" id="summary-skipped">0</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center fw-bold">
+                            <span>{{ __('Total records in table') }}</span>
+                            <span class="badge bg-dark rounded-pill" id="summary-imported">0</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <a href="{{ route('assessments.show', $assessment->id) }}" class="btn btn-primary">
+                        {{ __('Continue') }} <i class="ri-arrow-right-line ms-1"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 @section('script')
     <script>
+        let pollTimer = null;
+        let summaryShown = false;
+
+        function showSummaryModal(data) {
+            if (summaryShown) return;
+            summaryShown = true;
+            document.getElementById('summary-inserted').innerText  = (data.inserted_rows  || 0).toLocaleString();
+            document.getElementById('summary-updated').innerText   = (data.updated_rows   || 0).toLocaleString();
+            document.getElementById('summary-duplicate').innerText = (data.duplicate_rows || 0).toLocaleString();
+            document.getElementById('summary-skipped').innerText   = (data.skipped_rows   || 0).toLocaleString();
+            document.getElementById('summary-imported').innerText  = (data.imported_rows  || 0).toLocaleString();
+
+            const modalEl = document.getElementById('ingestionSummaryModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+
         function updateProgress() {
             fetch('{{ route('assessments.progress', $assessment->id) }}')
                 .then(response => response.json())
@@ -90,7 +150,15 @@ App::setLocale(session('lang'));
 
                     processedCount.innerText = data.processed_rows.toLocaleString();
                     totalCount.innerText = (data.total_rows > 0) ? data.total_rows.toLocaleString() : '...';
-                    
+
+                    // Swap the stage title/subtitle when we're in the commit phase
+                    if (data.status === 'committing' || (data.status === 'completed' && data.finalized_rows > 0)) {
+                        const title = document.getElementById('stage-title');
+                        const subtitle = document.getElementById('stage-subtitle');
+                        if (title)    title.innerText = 'Step 2: Committing to Master Data';
+                        if (subtitle) subtitle.innerText = 'Merging records — inserting new entries and updating changed ones.';
+                    }
+
                     if (data.status === 'failed') {
                         statusBadge.innerText = 'Failed';
                         statusBadge.className = 'badge bg-danger text-white';
@@ -98,14 +166,21 @@ App::setLocale(session('lang'));
                         document.getElementById('error-container').classList.remove('d-none');
                         progressBar.classList.remove('bg-primary');
                         progressBar.classList.add('bg-danger');
-                        return; // Stop further updates or redirects
+                        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                        return;
                     }
 
                     if (data.status !== 'processing') {
                         statusBadge.innerText = data.status.charAt(0).toUpperCase() + data.status.slice(1);
                         statusBadge.className = 'badge bg-success text-white';
-                        
-                        if (data.status === 'parsed' || data.status === 'completed') {
+
+                        if (data.status === 'completed') {
+                            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                            showSummaryModal(data);
+                            return;
+                        }
+
+                        if (data.status === 'parsed') {
                             window.location.href = '{{ route('assessments.show', $assessment->id) }}';
                         }
                     }
@@ -113,7 +188,7 @@ App::setLocale(session('lang'));
                 .catch(error => console.error('Error fetching progress:', error));
         }
 
-        setInterval(updateProgress, 2000);
+        pollTimer = setInterval(updateProgress, 2000);
         updateProgress();
     </script>
 @endsection
