@@ -95,6 +95,17 @@ App::setLocale(session('lang'));
                             <span><i class="ri-file-copy-line text-warning me-1"></i> {{ __('Duplicates skipped (no change)') }}</span>
                             <span class="badge bg-warning text-dark rounded-pill" id="summary-duplicate">0</span>
                         </li>
+                        <li class="list-group-item d-none" id="summary-cross-row">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="ri-alert-line text-warning me-1"></i> {{ __('Cross-template duplicates updated') }}</span>
+                                <span class="badge bg-warning text-dark rounded-pill" id="summary-cross">0</span>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                {{ __('These rows already existed in another assessment using the same template — the original assessment\'s row was updated with the new values.') }}
+                                <a href="#" id="summary-cross-toggle" class="ms-1">{{ __('Show details') }}</a>
+                            </div>
+                            <ul class="list-unstyled small mt-2 d-none" id="summary-cross-list"></ul>
+                        </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
                             <span><i class="ri-error-warning-line text-danger me-1"></i> {{ __('Skipped (validation / missing key)') }}</span>
                             <span class="badge bg-danger rounded-pill" id="summary-skipped">0</span>
@@ -119,6 +130,8 @@ App::setLocale(session('lang'));
         let pollTimer = null;
         let summaryShown = false;
 
+        let crossDetailsLoaded = false;
+
         function showSummaryModal(data) {
             if (summaryShown) return;
             summaryShown = true;
@@ -128,10 +141,56 @@ App::setLocale(session('lang'));
             document.getElementById('summary-skipped').innerText   = (data.skipped_rows   || 0).toLocaleString();
             document.getElementById('summary-imported').innerText  = (data.imported_rows  || 0).toLocaleString();
 
+            const crossCount = (data.cross_template_updates || 0);
+            const crossRow   = document.getElementById('summary-cross-row');
+            document.getElementById('summary-cross').innerText = crossCount.toLocaleString();
+            if (crossCount > 0) {
+                crossRow.classList.remove('d-none');
+            }
+
             const modalEl = document.getElementById('ingestionSummaryModal');
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
             modal.show();
         }
+
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.id === 'summary-cross-toggle') {
+                e.preventDefault();
+                const list = document.getElementById('summary-cross-list');
+                const link = e.target;
+                if (list.classList.contains('d-none')) {
+                    if (!crossDetailsLoaded) {
+                        fetch('{{ route('assessments.crossUpdates', $assessment->id) }}')
+                            .then(r => r.json())
+                            .then(payload => {
+                                const items = (payload && payload.details) || [];
+                                if (items.length === 0) {
+                                    list.innerHTML = '<li class="text-muted">{{ __('No details available.') }}</li>';
+                                } else {
+                                    list.innerHTML = items.map(d => {
+                                        const targetLabel = d.target_assessment_label || ('#' + (d.target_assessment_id || '?'));
+                                        const ec = d.target_entry_counter ? (' (entry #' + d.target_entry_counter + ')') : '';
+                                        return '<li>'
+                                            + '<i class="ri-arrow-right-line me-1"></i>'
+                                            + '{{ __('Row') }} ' + (d.row_index || '?')
+                                            + ' &rarr; {{ __('updated assessment') }} ' + targetLabel + ec
+                                            + '</li>';
+                                    }).join('');
+                                }
+                                crossDetailsLoaded = true;
+                            })
+                            .catch(() => {
+                                list.innerHTML = '<li class="text-danger">{{ __('Failed to load details.') }}</li>';
+                            });
+                    }
+                    list.classList.remove('d-none');
+                    link.innerText = '{{ __('Hide details') }}';
+                } else {
+                    list.classList.add('d-none');
+                    link.innerText = '{{ __('Show details') }}';
+                }
+            }
+        });
 
         function updateProgress() {
             fetch('{{ route('assessments.progress', $assessment->id) }}')

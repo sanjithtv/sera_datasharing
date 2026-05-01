@@ -16,7 +16,8 @@ class AssessmentMasterData extends Model
         'template_key_value',
         'type',
         'entry_counter',
-        'template_sheet_id'
+        'template_sheet_id',
+        's_no'
     ];
 
     public function assessment()

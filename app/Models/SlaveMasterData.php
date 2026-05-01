@@ -22,7 +22,8 @@ class SlaveMasterData extends Model
         'status',
         'processing_message',
         'sheet_id',
-        'row_hash'
+        'row_hash',
+        's_no'
     ];
 
     protected $casts = [

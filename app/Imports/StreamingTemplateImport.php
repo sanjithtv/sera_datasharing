@@ -195,6 +195,11 @@ class StreamingTemplateImport
                         $slugToHuman[$slug] = trim((string)$h);
                     }
 
+                    // Detect the S.No column in the file. It is intentionally
+                    // NOT registered as a template_key — captured separately as
+                    // a backend-only row identifier for cross-template dedup.
+                    $this->setSnoColumnIndex(self::detectSnoColumnIndex($rawHeaders));
+
                     $matchedCount  = 0;
                     $missingKeys   = [];
 

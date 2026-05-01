@@ -146,5 +146,6 @@ Route::post('/update-password/{id}', [App\Http\Controllers\HomeController::class
 
 // Progress Tracking
 Route::get('/assessments/{assessment}/progress', [App\Http\Controllers\AssessmentController::class, 'getProgress'])->name('assessments.progress');
+Route::get('/assessments/{assessment}/cross-updates', [App\Http\Controllers\AssessmentController::class, 'getCrossUpdates'])->name('assessments.crossUpdates');
 
 //Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])->name('index');

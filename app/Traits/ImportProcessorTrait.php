@@ -17,6 +17,43 @@ trait ImportProcessorTrait
     protected $batchTimestamp = null;
     protected $detectedDateFormat = null;
     protected $detectedTimeFormat = null;
+
+    /**
+     * Per-sheet zero-based column index of the "S.No" column in the uploaded
+     * Excel file. Set by the Import class after header detection (see
+     * detectSnoColumnIndex). Used to capture the row's S.No for backend-only
+     * duplicate detection — never displayed on the frontend.
+     */
+    protected $snoColumnIndex = null;
+
+    /**
+     * Slug values that identify a column as the S.No (serial number) column.
+     * Detected case-insensitively after Str::slug normalization.
+     */
+    protected static $snoColumnSlugs = ['s_no', 'sno', 'sl_no', 'slno', 'serial_no', 'serial', 'sr_no', 'srno'];
+
+    /**
+     * Detect the zero-based column index of the S.No column inside a slugged
+     * header row. Returns null if no recognised S.No column is present.
+     */
+    public static function detectSnoColumnIndex(array $sluggedHeaders): ?int
+    {
+        foreach ($sluggedHeaders as $idx => $slug) {
+            if (in_array($slug, self::$snoColumnSlugs, true)) {
+                return (int) $idx;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Setter so Import classes (which hold the trait) can publish the detected
+     * column index to the trait without touching protected state directly.
+     */
+    public function setSnoColumnIndex(?int $index): void
+    {
+        $this->snoColumnIndex = $index;
+    }
     
     /**
      * ✅ Validate headers against template keys
@@ -158,10 +195,24 @@ trait ImportProcessorTrait
             ]);
         }
 
-        // 3. Calculate Fingerprint (Hash) for Duplicate Detection
-        $rowHash = md5(json_encode($mapped));
+        // 3. Capture S.No from the raw row (backend-only identifier used for
+        //    cross-template duplicate detection — never surfaced in the UI).
+        $sNo = null;
+        if ($this->snoColumnIndex !== null) {
+            $rawSno = $row[$this->snoColumnIndex] ?? null;
+            if ($rawSno !== null) {
+                $rawSno = ($rawSno instanceof \DateTimeInterface) ? $rawSno->format('Y-m-d') : (string) $rawSno;
+                $rawSno = trim($rawSno);
+                if ($rawSno !== '') $sNo = $rawSno;
+            }
+        }
 
-        // 4. Buffer Data
+        // 4. Calculate Fingerprint (Hash) for Duplicate Detection.
+        //    Include S.No in the hash so re-uploads of the same logical row hit
+        //    the fast-path even when the data is otherwise unchanged.
+        $rowHash = md5(($sNo !== null ? ('SNO:' . $sNo . '|') : '') . json_encode($mapped));
+
+        // 5. Buffer Data
         $this->buffer[] = [
             'assessment_id'      => $assessmentId,
             'licensee_id'        => $licenseeId,
@@ -173,6 +224,7 @@ trait ImportProcessorTrait
             'status'             => $isPending ? 'pending' : 'processed',
             'sheet_id'           => $sheetId,
             'row_hash'           => $rowHash,
+            's_no'               => $sNo,
             'created_at'         => $this->batchTimestamp,
             'updated_at'         => $this->batchTimestamp,
         ];

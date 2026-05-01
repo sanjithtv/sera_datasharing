@@ -86,10 +86,12 @@ class FinalizeImportJob implements ShouldQueue
                 'db_updated'    => $updated
             ]);
 
-            $duplicateCount = 0;
-            $skippedRows    = [];
-            $lastId         = 0;
-            $chunkSize      = 500;
+            $duplicateCount       = 0;
+            $crossUpdateCount     = 0;
+            $skippedRows          = [];
+            $crossUpdateDetails   = []; // [{ row_index, target_assessment_id, target_entry_counter, sheet_id, was_changed }]
+            $lastId               = 0;
+            $chunkSize            = 500;
 
             // Upsert: cached signature maps per sheet. Lazily populated on first sighting of each sheet.
             $existingMapsBySheet = [];
@@ -110,20 +112,19 @@ class FinalizeImportJob implements ShouldQueue
                 }
 
                 $lastId = $rows->last()->id;
-                
-                // 1. Pre-fetch existing hashes for this chunk to avoid N+1 queries
-                $chunkHashes = $rows->pluck('row_hash')->filter()->unique()->toArray();
-                $existingHashesMap = DB::table('sr_assessment_row_hashes')
-                    ->where('assessment_id', $assessment->id)
-                    ->whereIn('row_hash', $chunkHashes)
-                    ->get()
-                    ->groupBy('sheet_id')
-                    ->map(fn($g) => $g->pluck('row_hash', 'row_hash')->toArray())
-                    ->toArray();
+
+                // NOTE: The hash fast-path (sr_assessment_row_hashes) was REMOVED.
+                // It was a performance optimization that short-circuited classifyRow
+                // when an identical-byte row was seen before, but it produced false
+                // duplicates whenever master_data changed without the hash table being
+                // updated to match — e.g. after a same-assessment update that revert
+                // a row to a previously-uploaded value (its old hash matches and the
+                // new upload is wrongly skipped). The signature-based dedup below
+                // (preloadExistingRecords + classifyRow) reads the *current* master_data
+                // every time, so it always reaches the correct decision.
 
                 $insertBatch = [];
                 $updateBatch = [];
-                $hashBatch   = [];
 
                 foreach ($rows as $row) {
                     $rowErrors = is_array($row->validation_errors)
@@ -139,23 +140,18 @@ class FinalizeImportJob implements ShouldQueue
                         continue;
                     }
 
-                    // 2. Fast-path: identical-row hash dedup (short-circuits the helper).
-                    $sheetHashes = $existingHashesMap[$row->sheet_id] ?? [];
-                    if (isset($sheetHashes[$row->row_hash])) {
-                        $duplicateCount++;
-                        continue;
-                    }
-
                     $rowData = is_array($row->row_data) ? $row->row_data : json_decode($row->row_data, true);
                     $keysMap = $keysMaps[$row->sheet_id] ?? [];
 
                     // 2a. Lazy-load the existing-record signature map for this sheet (one query per sheet).
+                    //     Scoped to the whole template so cross-assessment duplicates surface.
                     if (!isset($existingMapsBySheet[$row->sheet_id])) {
                         $mandatoryIdsBySheet[$row->sheet_id] = IngestionUpsertHelper::mandatoryKeyIds($keysMap);
                         $existingMapsBySheet[$row->sheet_id] = IngestionUpsertHelper::preloadExistingRecords(
                             $assessment->id,
                             $row->sheet_id,
-                            $mandatoryIdsBySheet[$row->sheet_id]
+                            $mandatoryIdsBySheet[$row->sheet_id],
+                            (int) $assessment->licensee_template_id
                         );
                     }
 
@@ -168,8 +164,31 @@ class FinalizeImportJob implements ShouldQueue
                             'licensee_id'   => $row->licensee_id,
                             'sheet_id'      => $row->sheet_id,
                             'entry_counter' => $row->row_index,
+                            's_no'          => $row->s_no ?? null,
                         ]
                     );
+
+                    // Build a compact log record describing this row's classification.
+                    // Helps diagnose "data not updating" by showing which path each row
+                    // took (insert / update / cross-update / cross-noop / noop / skip).
+                    $changedFields = [];
+                    if (in_array($decision['action'], ['update', 'cross-update'], true)) {
+                        foreach ($decision['updates'] ?? [] as $u) {
+                            $changedFields[] = $u['template_key_id'] . '=>' . substr((string) ($u['value'] ?? ''), 0, 40);
+                        }
+                    }
+                    Log::info('FinalizeImportJob: row decision', [
+                        'assessment_id'         => $assessment->id,
+                        'sheet_id'              => $row->sheet_id,
+                        'row_index'             => $row->row_index,
+                        's_no'                  => $row->s_no ?? null,
+                        'row_hash'              => $row->row_hash,
+                        'action'                => $decision['action'],
+                        'owner_assessment_id'   => $decision['owner_assessment_id'] ?? null,
+                        'owner_entry_counter'   => $decision['owner_entry_counter'] ?? null,
+                        'changed_field_count'   => count($changedFields),
+                        'changed_fields_sample' => array_slice($changedFields, 0, 5),
+                    ]);
 
                     switch ($decision['action']) {
                         case 'insert':
@@ -186,6 +205,27 @@ class FinalizeImportJob implements ShouldQueue
                             $importedCount++; // treat update as re-imported so imported_rows stays accurate
                             $updatedCount++;
                             break;
+                        case 'cross-update':
+                            // Row matches an existing record in a DIFFERENT assessment
+                            // under the same template. Apply the update against the
+                            // original assessment's row and surface a warning.
+                            foreach ($decision['updates'] as $u) {
+                                $updateBatch[] = $u; // each $u carries its own assessment_id
+                            }
+                            $crossUpdateCount++;
+                            $crossUpdateDetails[] = [
+                                'row_index'             => $row->row_index,
+                                'sheet_id'              => $row->sheet_id,
+                                'target_assessment_id'  => $decision['owner_assessment_id'] ?? null,
+                                'target_entry_counter'  => $decision['owner_entry_counter'] ?? null,
+                                'was_changed'           => true,
+                            ];
+                            break;
+                        case 'cross-noop':
+                            // Identical row already exists in another assessment under
+                            // the same template — silently count as a duplicate.
+                            $duplicateCount++;
+                            break;
                         case 'noop':
                             $duplicateCount++;
                             break;
@@ -198,15 +238,9 @@ class FinalizeImportJob implements ShouldQueue
                             continue 2;
                     }
 
-                    // 3. Mark hash as "seen" both in memory for this chunk and for DB persistence.
-                    //    Covers insert AND update so an identical re-upload of the updated row fast-paths.
-                    $existingHashesMap[$row->sheet_id][$row->row_hash] = $row->row_hash;
-                    $hashBatch[] = [
-                        'assessment_id' => $assessment->id,
-                        'sheet_id'      => $row->sheet_id,
-                        'row_hash'      => $row->row_hash,
-                        'created_at'    => now()
-                    ];
+                    // (Hash fast-path removed — see note above. We deliberately do
+                    //  not write to sr_assessment_row_hashes anymore; stale entries
+                    //  there were the source of the false-duplicate bug.)
                 }
 
                 if (!empty($insertBatch)) {
@@ -225,11 +259,6 @@ class FinalizeImportJob implements ShouldQueue
                     }
                 }
 
-                if (!empty($hashBatch)) {
-                    // Use insertOrIgnore in case of race conditions or overlapping chunks
-                    DB::table('sr_assessment_row_hashes')->insertOrIgnore($hashBatch);
-                }
-
                 DB::commit();
 
                 // Update progress
@@ -245,7 +274,7 @@ class FinalizeImportJob implements ShouldQueue
                 ]);
 
                 // Destroy variables generated in this chunk to prevent memory fragmentation
-                unset($chunkHashes, $insertBatch, $updateBatch, $hashBatch, $rows);
+                unset($insertBatch, $updateBatch, $rows);
                 
                 // Force memory garbage collection every 500 iterations to avoid OS SIGKILL (OOM)
                 if (function_exists('gc_collect_cycles')) {
@@ -265,6 +294,16 @@ class FinalizeImportJob implements ShouldQueue
                 Storage::delete("imports/errors/assessment_{$assessment->id}_errors.json");
             }
 
+            // Cross-template update warning details (for the post-import summary).
+            if (!empty($crossUpdateDetails)) {
+                Storage::put(
+                    "imports/cross_updates/assessment_{$assessment->id}.json",
+                    json_encode($crossUpdateDetails)
+                );
+            } else {
+                Storage::delete("imports/cross_updates/assessment_{$assessment->id}.json");
+            }
+
             // Cleanup staging data
             SlaveMasterData::where('assessment_id', $assessment->id)->delete();
 
@@ -280,21 +319,23 @@ class FinalizeImportJob implements ShouldQueue
             \Illuminate\Support\Facades\DB::table('sr_licensee_assessments')
                 ->where('id', $assessment->id)
                 ->update([
-                    'status'         => 'completed',
-                    'imported_rows'  => $actualImportedDbCount,
-                    'inserted_rows'  => $insertedCount,
-                    'updated_rows'   => $updatedCount,
-                    'skipped_rows'   => \Illuminate\Support\Facades\DB::raw("skipped_rows + $skippedCount"),
-                    'duplicate_rows' => \Illuminate\Support\Facades\DB::raw("duplicate_rows + $duplicateCount"),
+                    'status'                 => 'completed',
+                    'imported_rows'          => $actualImportedDbCount,
+                    'inserted_rows'          => $insertedCount,
+                    'updated_rows'           => $updatedCount,
+                    'cross_template_updates' => $crossUpdateCount,
+                    'skipped_rows'           => \Illuminate\Support\Facades\DB::raw("skipped_rows + $skippedCount"),
+                    'duplicate_rows'         => \Illuminate\Support\Facades\DB::raw("duplicate_rows + $duplicateCount"),
                 ]);
 
             Log::emergency("FinalizeImportJob: BREADCRUMB 6 (Completion update done)");
 
             Log::info("FinalizeImportJob: Completed", [
-                'assessment_id' => $assessment->id,
-                'imported'      => $importedCount,
-                'skipped'       => $skippedCount,
-                'duplicates'    => $duplicateCount
+                'assessment_id'          => $assessment->id,
+                'imported'               => $importedCount,
+                'skipped'                => $skippedCount,
+                'duplicates'             => $duplicateCount,
+                'cross_template_updates' => $crossUpdateCount,
             ]);
 
         } catch (\Throwable $e) {

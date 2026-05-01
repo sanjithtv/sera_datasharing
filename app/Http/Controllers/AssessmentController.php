@@ -1580,16 +1580,17 @@ private function exportToCsv($assessment, $sheet)
         }
 
         $data = [
-            'status'         => $rawAssessment->status,
-            'total_rows'     => (int)$rawAssessment->total_rows,
-            'processed_rows' => (int)$rawAssessment->processed_rows,
-            'finalized_rows' => (int)$rawAssessment->finalized_rows,
-            'imported_rows'  => (int)($rawAssessment->imported_rows ?? 0),
-            'inserted_rows'  => (int)($rawAssessment->inserted_rows ?? 0),
-            'updated_rows'   => (int)($rawAssessment->updated_rows ?? 0),
-            'duplicate_rows' => (int)($rawAssessment->duplicate_rows ?? 0),
-            'skipped_rows'   => (int)($rawAssessment->skipped_rows ?? 0),
-            'percentage'     => $this->calculatePercentageFromRaw($rawAssessment),
+            'status'                 => $rawAssessment->status,
+            'total_rows'             => (int)$rawAssessment->total_rows,
+            'processed_rows'         => (int)$rawAssessment->processed_rows,
+            'finalized_rows'         => (int)$rawAssessment->finalized_rows,
+            'imported_rows'          => (int)($rawAssessment->imported_rows ?? 0),
+            'inserted_rows'          => (int)($rawAssessment->inserted_rows ?? 0),
+            'updated_rows'           => (int)($rawAssessment->updated_rows ?? 0),
+            'duplicate_rows'         => (int)($rawAssessment->duplicate_rows ?? 0),
+            'skipped_rows'           => (int)($rawAssessment->skipped_rows ?? 0),
+            'cross_template_updates' => (int)($rawAssessment->cross_template_updates ?? 0),
+            'percentage'             => $this->calculatePercentageFromRaw($rawAssessment),
         ];
 
         Log::info("Assessment Progress Polling (Direct DB)", [
@@ -1598,6 +1599,42 @@ private function exportToCsv($assessment, $sheet)
         ]);
 
         return response()->json($data);
+    }
+
+    /**
+     * Return the cross-template duplicate-update details for the post-import summary.
+     * Each entry represents one row from the just-imported file whose values
+     * overwrote a row that lived in a DIFFERENT assessment under the same template.
+     */
+    public function getCrossUpdates(Assessment $assessment)
+    {
+        session_write_close();
+
+        $path = "imports/cross_updates/assessment_{$assessment->id}.json";
+        if (!Storage::exists($path)) {
+            return response()->json(['details' => []]);
+        }
+
+        $details = json_decode(Storage::get($path), true) ?: [];
+
+        // Hydrate target assessment labels (id + assessment_date) so the UI can
+        // show a meaningful identifier instead of just a numeric id.
+        $targetIds = array_values(array_unique(array_filter(array_column($details, 'target_assessment_id'))));
+        $labels = [];
+        if (!empty($targetIds)) {
+            $labels = DB::table('sr_licensee_assessments')
+                ->whereIn('id', $targetIds)
+                ->pluck('assessment_date', 'id')
+                ->toArray();
+        }
+        foreach ($details as &$d) {
+            $tid = $d['target_assessment_id'] ?? null;
+            $d['target_assessment_label'] = $tid
+                ? '#' . $tid . (isset($labels[$tid]) ? ' (' . $labels[$tid] . ')' : '')
+                : null;
+        }
+
+        return response()->json(['details' => $details]);
     }
 
     private function calculatePercentageFromRaw($raw)
