@@ -191,6 +191,7 @@ class LicenseeTemplateController extends Controller
     {
         try {
             $validated = $request->validate([
+                'short_code' => 'required|string|max:100',
                 'desc_en' => 'required|string|max:255',
                 'desc_ar' => 'nullable|string|max:255',
                 'mandatory' => 'required|int',
@@ -199,8 +200,8 @@ class LicenseeTemplateController extends Controller
 
             $templateKey = LicenseeTemplateKey::findOrFail($key);
             $templateKey->update($validated);
-            
-            return back()->with('success', 'Key added successfully.');
+
+            return back()->with('success', 'Key updated successfully.');
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

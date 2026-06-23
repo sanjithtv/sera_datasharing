@@ -190,6 +190,17 @@ App::setLocale(session('lang'));
             </div>
 
             <div class="card-body table-responsive">
+                {{-- Per-key update forms placed OUTSIDE the table; inputs link to them via the HTML5 `form` attribute.
+                     A <form> may not be a child of <tr>: browsers hoist it out of the table, so all rows' fields
+                     end up bound to the first form and edits hit the wrong key. --}}
+                @if($groupedKeys->has($sheetId))
+                    @foreach($groupedKeys[$sheetId] as $key)
+                        <form id="key-form-{{ $key->id }}" method="POST" action="{{ route('forms.licensee_templates.keys.update', $key->id) }}">
+                            @csrf
+                            @method('PUT')
+                        </form>
+                    @endforeach
+                @endif
                 <table class="table table-bordered align-middle">
                     <thead class="table-light">
                         <tr>
@@ -204,25 +215,21 @@ App::setLocale(session('lang'));
                     <tbody>
                         @if($groupedKeys->has($sheetId))
                             @foreach($groupedKeys[$sheetId] as $key)
-                                <tr>
-                                    <form method="POST" action="{{ route('forms.licensee_templates.keys.update', $key->id) }}">
-                                        @csrf
-                                        @method('PUT')
-
+                                <tr id="key-row-{{ $key->id }}">
                                         <td>
-                                            <input type="text" name="short_code" value="{{ $key->short_code }}" class="form-control" required>
+                                            <input type="text" form="key-form-{{ $key->id }}" name="short_code" value="{{ $key->short_code }}" class="form-control" required>
                                         </td>
 
                                         <td>
-                                            <input type="text" name="desc_en" value="{{ $key->desc_en }}" class="form-control" required>
+                                            <input type="text" form="key-form-{{ $key->id }}" name="desc_en" value="{{ $key->desc_en }}" class="form-control" required>
                                         </td>
 
                                         <td>
-                                            <input type="text" name="desc_ar" value="{{ $key->desc_ar }}" class="form-control">
+                                            <input type="text" form="key-form-{{ $key->id }}" name="desc_ar" value="{{ $key->desc_ar }}" class="form-control">
                                         </td>
 
                                         <td>
-                                            <select name="mandatory" class="form-select">
+                                            <select name="mandatory" form="key-form-{{ $key->id }}" class="form-select">
                                                 <option value="1" {{ $key->mandatory == '1' ? 'selected' : '' }}>Yes</option>
                                                 <option value="0" {{ $key->mandatory == '0' ? 'selected' : '' }}>No</option>
                                                 <option value="3" {{ $key->mandatory == '3' ? 'selected' : '' }}>Auto</option>
@@ -230,7 +237,7 @@ App::setLocale(session('lang'));
                                         </td>
 
                                         <td>
-                                            <select name="type" class="form-select">
+                                            <select name="type" form="key-form-{{ $key->id }}" class="form-select">
                                                 <option value="text" {{ $key->type == 'text' ? 'selected' : '' }}>Text</option>
                                                 <option value="number" {{ $key->type == 'number' ? 'selected' : '' }}>Number</option>
                                                 <option value="select" {{ $key->type == 'select' ? 'selected' : '' }}>Select</option>
@@ -242,10 +249,9 @@ App::setLocale(session('lang'));
                                         </td>
 
                                         <td>
-                                            <button type="submit" class="btn btn-sm btn-success">Update</button>
+                                            <button type="submit" form="key-form-{{ $key->id }}" class="btn btn-sm btn-success">Update</button>
                                             <button type="button" class="btn btn-sm btn-danger delete-key-btn" data-id="{{ $key->id }}">Delete</button>
                                         </td>
-                                    </form>
                                 </tr>
                             @endforeach
                         @else

@@ -57,10 +57,13 @@ class AssessmentController extends Controller
      */
     public function index(Request $request)
     {
-        // Optional: Add filters, pagination, or search later
+        // The index view handles search, filtering, sorting and pagination entirely
+        // client-side via List.js (see resources/views/modules/assessments/index.blade.php),
+        // so all rows must be sent to the page. Using paginate() here would limit the
+        // page to 20 records and List.js would only ever paginate/search those 20.
         $assessments = Assessment::with(['licensee', 'licenseeTemplate.subfolder'])
         ->orderByDesc('created_at')
-        ->paginate(20);
+        ->get();
 
         // Return as JSON for API or pass to Blade view
         if ($request->wantsJson()) {
